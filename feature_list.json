@@ -1,0 +1,366 @@
+{
+  "project": "cmp-ensemble-hm",
+  "last_updated": "2026-05-22 (session 002 — data audit complete)",
+  "rules": {
+    "single_active_feature": true,
+    "passing_requires_evidence": true,
+    "do_not_skip_verification": true
+  },
+  "status_legend": {
+    "not_started": "Work has not begun.",
+    "in_progress": "The feature is the current active task.",
+    "blocked": "Work cannot continue until a documented blocker is resolved.",
+    "passing": "Required verification has passed and evidence is recorded."
+  },
+  "phase_order": [
+    "scaffold",
+    "phase0 (data prep)",
+    "phase1 (ES update + QC)",
+    "phase2 (model selection)",
+    "phase3 (ablation forecast)",
+    "phase4 (APS soft-category — out of scope for first iteration)"
+  ],
+  "features": [
+    {
+      "id": "scaffold-000",
+      "priority": 1,
+      "area": "scaffold",
+      "title": "Initialise git repository and .gitignore",
+      "user_visible_behavior": "`git status` works at the repo root; outputs/, logs/, __pycache__/, .venv/, *.npy caches are ignored; the four input Excel files and TZ_ensemble_forecast.md are tracked.",
+      "status": "not_started",
+      "verification": [
+        "Run `git status` and confirm it returns without error.",
+        "Run `git log --oneline -1` and confirm the bootstrap commit exists.",
+        "Confirm `outputs/` and `logs/` are listed in `.gitignore`."
+      ],
+      "evidence": [],
+      "notes": "First commit message: `scaffold scaffold-000: initial harness + ТЗ + input data inventory`."
+    },
+    {
+      "id": "scaffold-001",
+      "priority": 2,
+      "area": "scaffold",
+      "title": "Create Python package skeleton, pyproject.toml, and config defaults",
+      "user_visible_behavior": "`python -m pip install -e .[dev]` succeeds; `cmp-ensemble --help` prints usage; `configs/default.yaml`, `configs/experiment_setups.yaml`, `configs/theta_schema.yaml`, `configs/noise_spec.yaml`, and `configs/well_layout.yaml` exist with the values derived in session 002.",
+      "status": "not_started",
+      "verification": [
+        "Run `python -m pip install -e .[dev]` — exits 0.",
+        "Run `cmp-ensemble --help` — prints the five `run --phase` subcommands plus `report` and `figures`.",
+        "Open `configs/default.yaml` and confirm `ensemble.N=150`, `ensemble.cluster_sizes=[50, 50, 50]`, `es_update.subspace_energy=0.99`, `es_update.localization_threshold_factor=3.0`, `es_update.perturbation_seed=42`.",
+        "Open `configs/experiment_setups.yaml` and confirm the three setups (`setup1_naive`, `setup2_localized`, `setup3_full`) match ТЗ §6 Task 3.1 verbatim. `setup3_full` carries a comment noting that controls are absent from this dataset; the runtime degrades it to setup2 with a warning.",
+        "Open `configs/theta_schema.yaml` and confirm the 9 parameters from `models_near_adapted_centroids.xlsx` (THICK, MAJ_R, AZIMUTH, NUMBER_CHANNELS, CHANNELS_WIDTH, LEN, AMPLITUDE, RELATIVE, PROP) with type=continuous and min/max ranges drawn from the data envelope across all 150 models.",
+        "Open `configs/noise_spec.yaml` and confirm `relative_sigma: 0.15`, `floor: <small value>`, structure: diagonal (per ТЗ §3 default).",
+        "Open `configs/well_layout.yaml` and confirm 17 producers + 6 injectors, types inferred from name prefix, coordinates left as null with a comment noting they are unavailable from inputs."
+      ],
+      "evidence": [],
+      "notes": "Package layout per ТЗ §5: src/cmp_ensemble/{io,ensemble,selection,forecast,qc,viz}, tests/, notebooks/. The four new YAML configs make explicit the choices reasoned out in session 002 — keep them in version control so reviewers can audit our data-contract decisions."
+    },
+    {
+      "id": "scaffold-002",
+      "priority": 3,
+      "area": "scaffold",
+      "title": "Synthetic mini-fixture (20 models, 3 clusters, 5 params, 10 obs)",
+      "user_visible_behavior": "`pytest tests/test_integration_synthetic.py -q` runs end-to-end in under 30 seconds against a generated synthetic dataset that mimics the 150-model real input.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_integration_synthetic.py -q` — passes.",
+        "Confirm wall time printed by pytest is < 30 s.",
+        "Confirm fixture seed is fixed (default 42) so reruns are byte-identical."
+      ],
+      "evidence": [],
+      "notes": "The fixture must include a known-truth θ so test_es_update can assert Z_post within 1σ of truth."
+    },
+    {
+      "id": "phase0-001",
+      "priority": 4,
+      "area": "phase0",
+      "title": "TNavigator loader (Task 0.1) — load 150 models from Excel inputs",
+      "user_visible_behavior": "`load_tnav_ensemble(...)` returns an `EnsembleData` from the two Excel workbooks (`models_near_adapted_centroids.xlsx` for θ and manifest, `Показатели динамики.xlsx` for per-model d_sim), with theta shape (150, 9), d_sim shape (150, n_d), cluster_ids in {0,1,2}, no NaN, validated by pydantic.",
+      "status": "not_started",
+      "verification": [
+        "Run unit test `pytest tests/test_io.py::test_load_synthetic_tnav` — passes.",
+        "Run on real inputs: `cmp-ensemble run --phase 0` — exits 0, writes `outputs/matrices/theta_prior.npy` (shape (150, 9)) and `outputs/matrices/d_sim.npy` (shape (150, n_d), no NaN).",
+        "Confirm 50 / 50 / 50 models per cluster in the loaded manifest.",
+        "Confirm θ_names == ['THICK', 'MAJ_R', 'AZIMUTH', 'NUMBER_CHANNELS', 'CHANNELS_WIDTH', 'LEN', 'AMPLITUDE', 'RELATIVE', 'PROP'].",
+        "Confirm well roster after filtering dummy 'B': 17 producers (WELL1..WELL10, WELL1A, WELL1B, WELL2A, WELL3A, WELL4A, WELL5A) + 6 injectors (INJ1..INJ6).",
+        "Confirm time grid length is 96 ± 2 monthly steps spanning 2011-01-01 to 2018-12-13.",
+        "Confirm 150 / 150 dynamics sheets matched to the parameter table via the `round(SEED) → sheet suffix` linkage rule.",
+        "Logs include one `loaded model_id=X cluster=Y n_NaN=Z` line per model."
+      ],
+      "evidence": [],
+      "notes": "UNBLOCKED in session 002. Data contract confirmed in `claude-progress.md`. The 12-parameter `workflow_params.csv` from ТЗ §3 does NOT exist for this dataset — the loader returns only θ_adapt (9 cols), and `u` is None. Drop dummy well 'B' (zeros everywhere). Drop the stray '51-result_*' row in `Кроссплоты.xlsx`. Use `openpyxl` for read; cache the parsed result as `outputs/cache/ensemble.h5` (HDF5 via h5py) to avoid re-parsing 150 sheets on every run."
+    },
+    {
+      "id": "phase0-002",
+      "priority": 5,
+      "area": "phase0",
+      "title": "Observations loader (Task 0.2) — long-format historical Excel + synthesised noise spec",
+      "user_visible_behavior": "`load_observations(...)` returns `ObservationData` from `Исторические значения.xlsx` (long-format, 2231 rows) with d_obs_rates, d_obs_cum, and diagonal C_dd built from a 15%-Gaussian default (no `noise_spec.yaml` on disk).",
+      "status": "not_started",
+      "verification": [
+        "Run unit test `pytest tests/test_io.py::test_load_observations` — passes.",
+        "Confirm pivot from long-format to (n_time, n_well) tables for each metric in {oil_rate, water_rate, gas_rate, liquid_rate, oil_cum, water_cum, gas_cum, water_injection, BHP}.",
+        "Confirm `C_dd_rates` is diagonal, strictly positive, and `diag(C_dd_rates)[i] == (0.15 * |d_obs_rates[i]|) ** 2` (with a documented floor for entries where |d_obs| is near zero).",
+        "Confirm shapes match the loader output from `phase0-001` (same well roster, same time grid).",
+        "Confirm BHP-coverage warning: log a WARNING citing 'BHP non-zero in N / 2231 historical rows (~X%)' so downstream phases know BHP is sparse."
+      ],
+      "evidence": [],
+      "notes": "UNBLOCKED in session 002. `noise_spec.yaml` does not exist on disk; the loader synthesises C_dd from a 15% relative-Gaussian default (per ТЗ §3) and writes the canonical spec to `outputs/cache/noise_spec.effective.yaml` for audit. Drop dummy well 'B' here too. Annual cumulative aggregation cadence (year-end anchors) is a remaining clarification — for now, use the last monthly row of each calendar year; mark this in the sidecar `*.meta.yaml`."
+    },
+    {
+      "id": "phase0-003",
+      "priority": 6,
+      "area": "phase0",
+      "title": "State vector builder (Task 0.3)",
+      "user_visible_behavior": "`build_state_vector(theta, u, include_controls)` returns `(z, schema)` where z is (N, n_z); the schema round-trips back to (θ, u).",
+      "status": "not_started",
+      "verification": [
+        "Run unit test `pytest tests/test_state_vector.py` — passes.",
+        "Confirm round-trip: `unpack(build_state_vector(θ, u)) == (θ, u)` byte-identical."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase1-001",
+      "priority": 7,
+      "area": "phase1",
+      "title": "Adaptive correlation-based localization (Task 1.1)",
+      "user_visible_behavior": "`adaptive_correlation_localization(Z, D, N, method)` returns a (n_z, n_d) mask with the hard threshold `3/sqrt(N)`; logs the fraction of zeroed elements.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_localization.py` — passes.",
+        "Assert threshold at N=150 equals 0.2449 (within 1e-4).",
+        "Assert ~95% of elements zeroed on a null-distribution random input.",
+        "`method='soft_taper'` produces strictly more non-zero elements than `method='hard'` on the same input."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase1-002",
+      "priority": 8,
+      "area": "phase1",
+      "title": "ES update with subspace regularisation (Task 1.2)",
+      "user_visible_behavior": "`es_update(Z_prior, D_sim, d_obs, C_dd, localization_mask, subspace_energy=0.99, seed=42)` returns an `ESUpdateResult` with `Z_post`, `K`, `singular_values`, `n_components_kept`, `perturbations`.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_es_update.py` — passes.",
+        "On the synthetic fixture with known truth-θ: median over components of `|mean(Z_post) - truth| / std(Z_prior)` is < 1.0 (within 1σ).",
+        "SVD truncation retains ≥ 99% energy.",
+        "`Z_post.shape == Z_prior.shape`, no NaN."
+      ],
+      "evidence": [],
+      "notes": "Algorithm steps in ТЗ §6 Task 1.2 are normative — implement exactly in that order."
+    },
+    {
+      "id": "phase1-003",
+      "priority": 9,
+      "area": "phase1",
+      "title": "QC checks (Task 1.3) + reports",
+      "user_visible_behavior": "`run_qc_checks(Z_prior, Z_post, cluster_ids, schema)` returns a `QCReport`; thresholds match ТЗ: collapse if any `spread_retention < 0.1`, warning if majority `> 1.5`, warning if `rank_post < N-1`.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_qc.py` — passes.",
+        "On the synthetic fixture, `QCReport.passed` is True.",
+        "Inject a synthetic collapse case (artificial std reduction) — `QCReport.passed` is False and `n_collapse_components > 0`.",
+        "HTML report rendered at `outputs/qc/qc_report.html` and opens in a browser without errors."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase1-004",
+      "priority": 10,
+      "area": "phase1",
+      "title": "Cluster 3 diagnostic (Task 1.4)",
+      "user_visible_behavior": "An interactive plotly report at `outputs/qc/cluster3_diagnostic.html` shows the centroid migration of cluster 3 in θ-space before vs. after ES.",
+      "status": "not_started",
+      "verification": [
+        "Run the diagnostic on the real 150 models: `cmp-ensemble run --phase 1` — produces `outputs/qc/cluster3_diagnostic.html`.",
+        "Confirm the HTML contains at least one plotly figure (search for `plotly` in the rendered HTML).",
+        "Confirm `qc/qc_report.html` references the cluster 3 report."
+      ],
+      "evidence": [],
+      "notes": "If ES *increases* cluster-3 centroid offset, that is itself the publishable finding — record it, do not paper over."
+    },
+    {
+      "id": "phase1-stop",
+      "priority": 11,
+      "area": "phase1",
+      "title": "STOP — present Phase 1 results to user before Phase 2",
+      "user_visible_behavior": "An end-of-Phase-1 status report (`outputs/qc/qc_report.html` + a one-page summary in the session log) is delivered to the user; user signs off before Phase 2 starts.",
+      "status": "not_started",
+      "verification": [
+        "User has acknowledged the Phase 1 QC report (sign-off recorded in `claude-progress.md`)."
+      ],
+      "evidence": [],
+      "notes": "Per ТЗ §13 step 5 — explicit human-in-the-loop checkpoint."
+    },
+    {
+      "id": "phase2-001",
+      "priority": 12,
+      "area": "phase2",
+      "title": "Mahalanobis ranking (Task 2.1)",
+      "user_visible_behavior": "`rank_by_parameter_change(Z_prior, Z_post)` returns indices in descending order of `||Δz||_M`.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_selection.py::test_mahalanobis_rank` — passes.",
+        "Confirm the model with the largest synthetic Δz is index 0 in the returned ranking."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase2-002",
+      "priority": 13,
+      "area": "phase2",
+      "title": "Linear proxy + compute planner (Tasks 2.2, 2.3)",
+      "user_visible_behavior": "`plan_resimulation(...)` writes `outputs/selection/models_to_resimulate.csv` (top-X) and `outputs/selection/models_proxy.csv` (the rest, with proxy parameters); default X = 80.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_selection.py::test_compute_planner` — passes.",
+        "Confirm the two CSVs partition the 150 model IDs with no overlap and no missing IDs.",
+        "Confirm `validation_subset.csv` lists 10 model IDs drawn from `models_proxy.csv`."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase2-003",
+      "priority": 14,
+      "area": "phase2",
+      "title": "Proxy validation (Task 2.4) — requires user to re-simulate 10 models",
+      "user_visible_behavior": "After the user runs the 10 validation re-simulations in tNavigator, `validate_proxy(...)` writes `outputs/selection/proxy_validation.csv` with median relative error; reports PASS if median < 1.0, FAIL if > 2.0.",
+      "status": "blocked",
+      "verification": [
+        "User has uploaded the 10 validation re-simulations to `data/validation_resims/`.",
+        "Run `cmp-ensemble run --phase 2 --validate` — exits 0.",
+        "Confirm `outputs/selection/proxy_validation.csv` exists and the median relative error is recorded."
+      ],
+      "evidence": [],
+      "notes": "Blocked on ТЗ §15 clarification #5 (user willingness to run 10 manual re-sims) and on the user actually performing the runs."
+    },
+    {
+      "id": "phase2-stop",
+      "priority": 15,
+      "area": "phase2",
+      "title": "STOP — user re-simulates the selected models in tNavigator",
+      "user_visible_behavior": "User has produced the per-model forecast CSVs for the X models listed in `models_to_resimulate.csv` and placed them under `data/forecast_resims/`.",
+      "status": "not_started",
+      "verification": [
+        "Confirm `data/forecast_resims/` contains one subfolder per model ID in `models_to_resimulate.csv`.",
+        "Confirm each subfolder has the same file structure as `data/ensemble_150/tnav_outputs/<model_id>/` plus a `forecast/` subdir."
+      ],
+      "evidence": [],
+      "notes": "Per ТЗ §13 step 7 — explicit human-in-the-loop checkpoint."
+    },
+    {
+      "id": "phase3-001",
+      "priority": 16,
+      "area": "phase3",
+      "title": "Three setups configuration (Task 3.1)",
+      "user_visible_behavior": "`configs/experiment_setups.yaml` parses cleanly via pydantic into three `SetupConfig` instances matching ТЗ §6 Task 3.1.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_setups.py` — passes.",
+        "Confirm the three setup names are `setup1_naive`, `setup2_localized`, `setup3_full`."
+      ],
+      "evidence": [],
+      "notes": "May be partially done as part of scaffold-001; this feature gates the load-and-validate path."
+    },
+    {
+      "id": "phase3-002",
+      "priority": 17,
+      "area": "phase3",
+      "title": "Forecast aggregation (Task 3.2)",
+      "user_visible_behavior": "`aggregate_forecast(d_forecast, quantiles=[0.1,0.5,0.9])` returns `ForecastQuantiles` with P10, P50, P90 per timestep per phase.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_forecast.py::test_aggregate` — passes.",
+        "Confirm P10 ≤ P50 ≤ P90 element-wise on a random ensemble."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase3-003",
+      "priority": 18,
+      "area": "phase3",
+      "title": "Metrics (Task 3.3) — coverage, CRPS, width ratio, cumulative error",
+      "user_visible_behavior": "`compute_metrics(...)` returns a `ForecastMetrics` with `coverage_p10p90`, `crps_per_phase`, `width_ratio`, `cumulative_error`; gracefully sets coverage/cumulative_error to None if truth is missing.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_metrics.py` — passes.",
+        "Sanity: `CRPS(δ_y, y) == 0` exactly.",
+        "Sanity: `CRPS(Uniform[0, w], y_in_interval)` equals `w/12` (within 1e-9).",
+        "When `d_truth=None`, coverage and cumulative_error return None; CRPS and width_ratio still return values."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "phase3-004",
+      "priority": 19,
+      "area": "phase3",
+      "title": "Train/val split — PRIMARY path for Phase 3 (Task 3.4 promoted from fallback)",
+      "user_visible_behavior": "`split_history(historical_data, train_years=6, val_years=2)` returns a (train, val) tuple of `ObservationData` covering 2011-2016 (train) and 2017-2018 (val). The ES update consumes only the train slice; metrics in `phase3-005` are computed on the val slice.",
+      "status": "not_started",
+      "verification": [
+        "Run `pytest tests/test_split.py` — passes.",
+        "Confirm `train.time_steps[-1] < val.time_steps[0]` (no leakage).",
+        "Confirm `len(train.time_steps) ≈ 72` and `len(val.time_steps) ≈ 24` for the 6+2 split.",
+        "Confirm the d_sim slices loaded in `phase0-001` are also split consistently (`d_sim_train`, `d_sim_val`)."
+      ],
+      "evidence": [],
+      "notes": "PROMOTED FROM FALLBACK TO PRIMARY in session 002: the input Excel files contain ONLY historical data through 2018-12, with no forecast period. Phase 3 'honest forecast vs truth' is unavailable until the user produces forecast tNavigator runs (open clarification #1). The train/val split is therefore the default path, and the ablation table will be labelled as a hindcast evaluation on the 2017-2018 held-out window."
+    },
+    {
+      "id": "phase3-005",
+      "priority": 20,
+      "area": "phase3",
+      "title": "Run all setups (Task 3.5) on the train/val hindcast + summary CSV + figures",
+      "user_visible_behavior": "`cmp-ensemble run --phase 3` runs the available setups against the 2017-2018 held-out window and produces `outputs/forecast/metrics_summary.csv`, the six figures in `outputs/figures/`, and `outputs/article_assets/ablation_table.tex`. Setup3 (control-uncertainty) is reported as 'degenerate to setup2' unless the workflow-controls clarification is resolved.",
+      "status": "not_started",
+      "verification": [
+        "Run `cmp-ensemble run --phase 3` — exits 0.",
+        "Confirm `outputs/forecast/metrics_summary.csv` has one row per (setup × cluster × phase). At minimum 2 setups (setup1_naive, setup2_localized) are present; setup3_full is present only if workflow controls were sourced (clarification #4).",
+        "Confirm `outputs/figures/fig01_pipeline.png` through `fig06_cluster3_migration.png` exist (300 dpi PNG + matching PDF in `outputs/article_assets/figures_v2/`).",
+        "Confirm `outputs/article_assets/ablation_table.tex` compiles via `pdflatex` standalone.",
+        "Compute coverage_p10p90, CRPS, width_ratio, and cumulative_error on the val slice (2017-2018) for each setup.",
+        "Record whether the ablation ordering holds: `coverage_2 ≥ coverage_1` and `CRPS_2 ≤ CRPS_1`. If violated, record the actual values verbatim — do NOT massage (per ТЗ §6: 'это ВАЖНЫЙ результат, фиксируем как есть, не подгоняем').",
+        "Stamp the summary CSV with `evaluation_mode: 'train_val_hindcast_6+2'` so downstream readers know this is not a true forecast."
+      ],
+      "evidence": [],
+      "notes": "Reworked in session 002 to reflect the no-forecast-data reality. If clarification #1 is later answered yes (user will run forecast tNavigator), introduce a sibling feature `phase3-005-forecast` that runs the same setups on the true forecast period and supersedes this hindcast result."
+    },
+    {
+      "id": "phase3-stop",
+      "priority": 21,
+      "area": "phase3",
+      "title": "STOP — final report assembly",
+      "user_visible_behavior": "`cmp-ensemble report` builds a single HTML report at `outputs/report.html` linking the QC, selection, and ablation artifacts.",
+      "status": "not_started",
+      "verification": [
+        "Run `cmp-ensemble report` — exits 0, opens `outputs/report.html` without errors.",
+        "User has reviewed the report and signed off (recorded in `claude-progress.md`)."
+      ],
+      "evidence": [],
+      "notes": "Per ТЗ §13 step 9 — final human-in-the-loop checkpoint."
+    },
+    {
+      "id": "phase4-stub",
+      "priority": 99,
+      "area": "phase4",
+      "title": "APS soft-category (Task 4) — OUT OF SCOPE for first iteration",
+      "user_visible_behavior": "A module `src/cmp_ensemble/aps/` exists with a TODO docstring referencing ТЗ §6 Phase 4; no implementation.",
+      "status": "not_started",
+      "verification": [
+        "Confirm the module exists.",
+        "Confirm there is no callable code path that wires APS into Phases 0-3."
+      ],
+      "evidence": [],
+      "notes": "Per ТЗ §12 — do NOT implement Phase 4 in the first iteration. Only land the stub when Phase 3 is `passing` and the user explicitly asks."
+    }
+  ]
+}
