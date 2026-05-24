@@ -121,6 +121,37 @@ Newly surfaced by the audit:
 
 ### Session 004
 
+- Date: 2026-05-24
+- Goal: drive Phase 1 (Tasks 1.1–1.4) to `passing` and produce the first real ES update + QC report on the 149-model ensemble.
+- Completed:
+  - `phase1-001` adaptive correlation-based localization (`src/cmp_ensemble/ensemble/localization.py`). Hard mode and soft-taper mode. 5 unit tests pass.
+  - `phase1-002` ES update with subspace regularisation (`src/cmp_ensemble/ensemble/{subspace, es_update}.py`). Subspace projection of `(C_dd_ens + C_dd)⁻¹` via truncated SVD of `Dp/√(N-1)`. Deterministic perturbations seeded at 42. 7 unit tests pass.
+  - `phase1-003` QC checks (`src/cmp_ensemble/qc/checks.py`). Spread retention, rank, Mahalanobis migration, bimodality coefficient, cluster centroid shift, with thresholds from ТЗ §6 Task 1.3 (fixed rank check to `min(N-1, n_z)` after the first run produced a false-positive warning). 4 unit tests pass.
+  - `phase1-004` cluster migration diagnostic (`src/cmp_ensemble/qc/cluster_migration.py`). Plotly HTML with per-cluster reference / prior / posterior bars. Pulls reference centroids from `configs/theta_schema.yaml`.
+  - `phase1-cli` `_run_phase_1` wired in `cli.py`. End-to-end smoke run succeeds on the real 149-model ensemble.
+- Verification run: `pytest -q` → `23 passed in 2.00s`; `cmp-ensemble run --phase 1` → exit 0, QC summary PASSED.
+- Evidence captured:
+  - `outputs/matrices/{theta_post, K, locmask, perturbations, singular_values}.npy` (shapes (149,9), (9,384), (9,384), (149,384), (149,))
+  - `outputs/qc/{spread_retention.csv, mahalanobis_migration.csv, cluster_centroid_shift.csv, rank_check.json, cluster_migration.csv, cluster3_diagnostic.html}`
+  - subspace truncation kept 16 of 149 SVD components (energy 0.9916) — narrow effective rank
+  - localization kept 60 of 3456 K-entries (1.74%) at threshold 3/√149 = 0.2458
+- Substantive findings on the real run:
+  - **AZIMUTH** posterior centroid shifts +17° across all three clusters (~2.5 σ_prior). The data consistently asks for higher azimuth than the prior mean across every cluster.
+  - **THICK** posterior centroid drops by ~1 σ in all three clusters.
+  - **NUMBER_CHANNELS** drops by ~0.6 σ.
+  - The other 6 parameters (MAJ_R, CHANNELS_WIDTH, LEN, AMPLITUDE, RELATIVE, PROP) do not move at all — their K-entries were zeroed by hard localization. This is a hard prior that the present localization is silencing — worth sanity-checking before Phase 2.
+  - Mahalanobis migration BC = 0.368 (bimodal) → cluster-3 diagnostic confirms the migration is direction-consistent across clusters (no cluster "съезд", but the same effect applied to all three).
+- Commits: forthcoming — about to commit Phase 1 implementation + smoke artefacts.
+- Files or artifacts updated:
+  - new: `src/cmp_ensemble/ensemble/{localization, subspace, es_update}.py`, `src/cmp_ensemble/qc/{checks, cluster_migration}.py`, `tests/{test_localization, test_es_update, test_qc}.py`.
+  - modified: `src/cmp_ensemble/{cli, qc/__init__}.py` (phase 1 wiring + qc exports); `feature_list.json` (phase1-001..004, phase1-cli → `passing` with evidence).
+- Known risk or unresolved issue:
+  - Hard localization zeroes ~98% of K. Six of nine parameters never move. If sensitivity to those parameters matters scientifically, the next session should try `localization_method: soft_taper` or a smaller `localization_threshold_factor` (e.g. 2.0).
+  - Cluster-3 "съезд" question is not separable in the current diagnostic: all clusters move in the same direction, so it is hard to call out cluster 3 specifically. Worth a richer plot (e.g. Mahalanobis-migration per cluster) when QC HTML rollup is built.
+- Next best step: `phase1-stop` — present `outputs/qc/cluster3_diagnostic.html` + `outputs/qc/spread_retention.csv` + the centroid-shift table to the user; once signed off, start `phase2-001` (Mahalanobis ranking of models by ‖Δz‖_M for the resimulation selection list).
+
+### Session 005
+
 - Date:
 - Goal:
 - Completed:
