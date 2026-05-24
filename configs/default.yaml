@@ -1,0 +1,45 @@
+# Global pipeline defaults. Per ТЗ §7. Any value can be overridden via CLI flags.
+
+ensemble:
+  N: 150
+  n_clusters: 3
+  cluster_sizes: [50, 50, 50]
+
+es_update:
+  subspace_energy: 0.99
+  localization_threshold_factor: 3.0   # threshold = factor / sqrt(N)
+  localization_method: "hard"          # or "soft_taper"
+  perturbation_seed: 42
+
+selection:
+  default_top_x: 80
+  proxy_validation_n: 10
+
+forecast:
+  # Default Phase 3 mode: train/val hindcast because the inputs contain only
+  # history (2011-2018). If forecast tNavigator runs become available, switch to
+  # mode: "honest_forecast" and set forecast_horizon_years.
+  mode: "train_val_hindcast"
+  train_years: 6
+  val_years: 2
+  horizon_years: null
+  phases: ["oil", "water", "gas"]
+
+metrics:
+  quantiles: [0.1, 0.5, 0.9]
+  coverage_target: 0.8
+
+io:
+  cache_matrices: true
+  cache_dir: "outputs/cache"
+  # Excel paths relative to the project root. Override via CLI for tests.
+  paths:
+    parameters: "models_near_adapted_centroids.xlsx"
+    dynamics: "Показатели динамики.xlsx"
+    history: "Исторические значения.xlsx"
+    crossplots: "Кроссплоты.xlsx"
+
+logging:
+  level: "INFO"
+  file_level: "DEBUG"
+  log_dir: "logs"

@@ -1,0 +1,28 @@
+# Three ablation setups per ТЗ §6 Task 3.1.
+#
+# setup3_full degrades to setup2_localized at runtime because workflow controls
+# (workflow_params.csv 150×12) are not present in the input data for this
+# dataset. The runtime logs a WARNING when that degradation happens.
+
+setups:
+
+  setup1_naive:
+    use_es_update: false
+    use_localization: false
+    use_control_uncertainty: false
+    d_obs_type: "cumulative"
+    description: "Baseline: current approach (carry θ_adapt centroid forward, no ES)."
+
+  setup2_localized:
+    use_es_update: true
+    use_localization: true
+    use_control_uncertainty: false
+    d_obs_type: "cumulative"
+    description: "ES update + adaptive correlation-based localization."
+
+  setup3_full:
+    use_es_update: true
+    use_localization: true
+    use_control_uncertainty: true
+    d_obs_type: "hybrid"     # cumulative + annual rate snapshots
+    description: "Full book setup. Falls back to setup2 if controls are unavailable."

@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmp-ensemble"
+version = "0.1.0"
+description = "Post-hoc Ensemble Smoother + ablation forecast for CMP / Watt Field history matching"
+readme = "CLAUDE.md"
+requires-python = ">=3.11"
+authors = [{ name = "CMP Ensemble HM team" }]
+license = { text = "Proprietary" }
+
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pandas>=2.1",
+    "openpyxl>=3.1",
+    "h5py>=3.10",
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "rich>=13.7",
+    "click>=8.1",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "plotly>=5.18",
+    "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-mpl>=0.16",
+    "ruff>=0.2",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+cmp-ensemble = "cmp_ensemble.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]

@@ -97,6 +97,30 @@ Newly surfaced by the audit:
 
 ### Session 003
 
+- Date: 2026-05-24
+- Goal: bring Phase 0 to `passing`: scaffold the Python package, write the loaders, and run end-to-end against the real Excel inputs.
+- Completed:
+  - `scaffold-000`: `git init -b main`, wrote `.gitignore`, first commit `6674fa9 scaffold scaffold-000: initial harness, ТЗ, and input data inventory`.
+  - `scaffold-001`: `pyproject.toml` with the full dependency list, `src/cmp_ensemble/` package tree (io, ensemble, selection, forecast, qc, viz), `src/cmp_ensemble/{config, logging_setup, cli}.py`, and the five config YAMLs (`default.yaml`, `experiment_setups.yaml`, `theta_schema.yaml`, `noise_spec.yaml`, `well_layout.yaml`). Editable install via `pip install -e . --no-deps` after manually installing `pydantic`, `click`, `plotly` (the test machine has no PyPI access for the full editable resolve).
+  - `phase0-001`: `src/cmp_ensemble/io/{schemas,tnav_loader}.py`. The loader reads all 150 dynamics sheets, links them to the parameter table via `round(SEED)`, classifies wells (16 producers + 6 injectors, dummy `B` filtered), and caches the result to `outputs/cache/ensemble.h5`. One sheet `51-1_1-173` has a truncated timeline (74 rows vs canonical 97) and is skipped with a WARNING — N drops to 149.
+  - `phase0-002`: `src/cmp_ensemble/io/observations.py`. Loads `Исторические значения.xlsx` (long-format), pivots to (n_time, n_well) per metric, aligns to the ensemble's (metric, well, time) index, builds diagonal C_dd from the 15%-Gaussian default in `configs/noise_spec.yaml`. Zero-BHP entries (1325 of 1552 producer-BHP slots) get σ inflated to 1e6 so they do not dominate the ES update while keeping the d_obs/d_sim length aligned.
+  - `phase0-003`: `src/cmp_ensemble/ensemble/state_vector.py` — build/unpack round-trip with `StateVectorSchema`.
+  - CLI `cmp-ensemble run --phase 0` is wired; smoke run produces `outputs/matrices/{theta_prior, d_sim_rates, d_sim_cum, d_obs_rates, d_obs_cum, C_dd_rates_diag, C_dd_cum_diag, model_ids, cluster_ids}.npy`.
+  - Tests: `tests/test_state_vector.py` (5 unit tests) + `tests/test_io_smoke.py` (2 cache-driven smoke tests). All 7 pass in ~2 seconds.
+- Verification run: `python -m pytest -q` → `7 passed in 2.03s`; `python -m cmp_ensemble.cli run --phase 0` → completes, writes shapes `theta_prior=(149,9)`, `d_sim_rates=(149,6790)`, `d_sim_cum=(149,384)`, `d_obs_rates=(6790,)`, `d_obs_cum=(384,)`.
+- Evidence captured: `outputs/matrices/*.npy`, `outputs/cache/ensemble.h5`, 7 passing pytest cases.
+- Commits: forthcoming — about to commit the scaffold + Phase 0 implementation together with message `phase0 phase0-001..003: scaffold + loaders + state vector + smoke run`.
+- Files or artifacts updated:
+  - new: `pyproject.toml`, `src/cmp_ensemble/**`, `configs/{default,experiment_setups,theta_schema,noise_spec,well_layout}.yaml`, `tests/{__init__, test_state_vector, test_io_smoke}.py`.
+  - modified: `feature_list.json` (scaffold-000, scaffold-001, phase0-001..003 → `passing` with evidence paths).
+- Known risk or unresolved issue:
+  - One model (`51-1_1-173`) is silently dropped due to truncated timeline. If this matters scientifically (e.g. the model belongs to a poorly represented cluster), revisit and either pad or extend.
+  - The four pending clarifications carry over: forecast simulations? centroid-row interpretation? proxy-validation re-sim budget? cumulative cadence?
+  - `setup3_full` still has no `u` to consume — degrades to `setup2` at Phase 3 runtime. Decision can be deferred until Phase 3.
+- Next best step: `phase1-001` — adaptive correlation-based localization (Task 1.1). Threshold `3/√149 = 0.246`. Inputs ready: `outputs/matrices/theta_prior.npy` and (after building the cumulative-only Z, D) the columns of `d_sim_cum.npy` for the ES side.
+
+### Session 004
+
 - Date:
 - Goal:
 - Completed:

@@ -1,0 +1,45 @@
+# Well layout for CMP / Watt Field.
+#
+# Coordinates are unavailable from the input Excel files (no spatial layout was
+# provided). Types are inferred from name prefix: WELL* = producer, INJ* = injector.
+# The dummy well "B" (zero rates everywhere) is excluded from active analysis.
+
+producers:
+  - name: WELL1
+  - name: WELL1A
+  - name: WELL1B
+  - name: WELL2
+  - name: WELL2A
+  - name: WELL3
+  - name: WELL3A
+  - name: WELL4
+  - name: WELL4A
+  - name: WELL5
+  - name: WELL5A
+  - name: WELL6
+  - name: WELL7
+  - name: WELL8
+  - name: WELL9
+  - name: WELL10
+
+injectors:
+  - name: INJ1
+  - name: INJ2
+  - name: INJ3
+  - name: INJ4
+  - name: INJ5
+  - name: INJ6
+
+# Wells present in the Excel but excluded from analysis.
+excluded:
+  - name: "B"
+    reason: "Dummy / boundary well. Zero rates and zero pressures across all 2231 historical rows."
+
+# Counts (sanity reference for the loader)
+counts:
+  producers: 16   # WELL1..WELL10 + WELL1A, 1B, 2A, 3A, 4A, 5A
+  injectors: 6
+  total_active: 22
+# NOTE: ТЗ §3 says "17 producers + 6 injectors". The actual data has 16 producers
+# (one fewer than expected). The loader treats the spec as guidance; the data
+# names take precedence. Investigate during phase0-001 if needed.

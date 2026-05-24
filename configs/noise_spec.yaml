@@ -1,0 +1,25 @@
+# Observation noise specification for d_obs.
+# Per ТЗ §3 default: diagonal Gaussian with σ = 15% × |d_obs|.
+#
+# `floor_abs` prevents σ from collapsing to ~0 where |d_obs| is near zero
+# (early history before wells came online).
+
+structure: "diagonal"
+distribution: "gaussian"
+relative_sigma: 0.15        # 15% of the observed value
+floor_abs: 1.0e-3           # numeric floor on σ to avoid division-by-zero
+
+# Per-metric overrides. Use them when one quantity has a different uncertainty
+# than the global default. Empty by default — falls back to relative_sigma.
+overrides:
+  # Example (commented out):
+  # bhp:
+  #   relative_sigma: 0.05
+  #   floor_abs: 0.5
+
+# BHP-specific note: historical BHP is non-zero in only ~10% of rows
+# (227 of 2231 in Исторические значения.xlsx). The loader will either drop
+# BHP entries with |d_obs|=0 or inflate their σ. Default behaviour: drop.
+bhp_handling:
+  drop_zero_entries: true
+  zero_threshold: 1.0e-6

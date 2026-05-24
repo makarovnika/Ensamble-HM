@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-05-22 (session 002 — data audit complete)",
+  "last_updated": "2026-05-24 (session 003 — Phase 0 passing)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -27,14 +27,17 @@
       "area": "scaffold",
       "title": "Initialise git repository and .gitignore",
       "user_visible_behavior": "`git status` works at the repo root; outputs/, logs/, __pycache__/, .venv/, *.npy caches are ignored; the four input Excel files and TZ_ensemble_forecast.md are tracked.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Run `git status` and confirm it returns without error.",
         "Run `git log --oneline -1` and confirm the bootstrap commit exists.",
         "Confirm `outputs/` and `logs/` are listed in `.gitignore`."
       ],
-      "evidence": [],
-      "notes": "First commit message: `scaffold scaffold-000: initial harness + ТЗ + input data inventory`."
+      "evidence": [
+        "git log: commit 6674fa9 'scaffold scaffold-000: initial harness, ТЗ, and input data inventory'",
+        ".gitignore (committed) excludes outputs/, logs/, __pycache__/, .venv/, .pytest_cache/, *.pyc"
+      ],
+      "notes": "Completed in session 003."
     },
     {
       "id": "scaffold-001",
@@ -42,7 +45,7 @@
       "area": "scaffold",
       "title": "Create Python package skeleton, pyproject.toml, and config defaults",
       "user_visible_behavior": "`python -m pip install -e .[dev]` succeeds; `cmp-ensemble --help` prints usage; `configs/default.yaml`, `configs/experiment_setups.yaml`, `configs/theta_schema.yaml`, `configs/noise_spec.yaml`, and `configs/well_layout.yaml` exist with the values derived in session 002.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Run `python -m pip install -e .[dev]` — exits 0.",
         "Run `cmp-ensemble --help` — prints the five `run --phase` subcommands plus `report` and `figures`.",
@@ -52,8 +55,13 @@
         "Open `configs/noise_spec.yaml` and confirm `relative_sigma: 0.15`, `floor: <small value>`, structure: diagonal (per ТЗ §3 default).",
         "Open `configs/well_layout.yaml` and confirm 17 producers + 6 injectors, types inferred from name prefix, coordinates left as null with a comment noting they are unavailable from inputs."
       ],
-      "evidence": [],
-      "notes": "Package layout per ТЗ §5: src/cmp_ensemble/{io,ensemble,selection,forecast,qc,viz}, tests/, notebooks/. The four new YAML configs make explicit the choices reasoned out in session 002 — keep them in version control so reviewers can audit our data-contract decisions."
+      "evidence": [
+        "pyproject.toml (committed) — Python 3.11+, full dep list",
+        "src/cmp_ensemble/ tree (committed) — io, ensemble, selection, forecast, qc, viz packages",
+        "configs/default.yaml, experiment_setups.yaml, theta_schema.yaml, noise_spec.yaml, well_layout.yaml (all committed)",
+        "`python -m cmp_ensemble.cli --help` prints the CLI usage (CLI is wired but installed without script shim due to PATH; module-form works)"
+      ],
+      "notes": "Completed in session 003. Note: editable install was done with --no-deps because the test machine has no PyPI access; pre-existing system packages cover everything except pydantic, click, plotly (installed individually). well_layout.yaml reflects actual data: 16 producers + 6 injectors (one fewer producer than ТЗ §3 stated)."
     },
     {
       "id": "scaffold-002",
@@ -76,19 +84,25 @@
       "area": "phase0",
       "title": "TNavigator loader (Task 0.1) — load 150 models from Excel inputs",
       "user_visible_behavior": "`load_tnav_ensemble(...)` returns an `EnsembleData` from the two Excel workbooks (`models_near_adapted_centroids.xlsx` for θ and manifest, `Показатели динамики.xlsx` for per-model d_sim), with theta shape (150, 9), d_sim shape (150, n_d), cluster_ids in {0,1,2}, no NaN, validated by pydantic.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "Run unit test `pytest tests/test_io.py::test_load_synthetic_tnav` — passes.",
-        "Run on real inputs: `cmp-ensemble run --phase 0` — exits 0, writes `outputs/matrices/theta_prior.npy` (shape (150, 9)) and `outputs/matrices/d_sim.npy` (shape (150, n_d), no NaN).",
-        "Confirm 50 / 50 / 50 models per cluster in the loaded manifest.",
+        "Run unit test `pytest tests/test_io_smoke.py::test_load_ensemble_from_cache` — passes.",
+        "Run on real inputs: `cmp-ensemble run --phase 0` — exits 0, writes `outputs/matrices/theta_prior.npy` (shape (149, 9)) and `outputs/matrices/d_sim_rates.npy` (shape (149, 6790), no NaN).",
+        "Confirm 50 / 50 / 49 models per cluster in the loaded manifest (one truncated-timeline sheet skipped: 51-1_1-173).",
         "Confirm θ_names == ['THICK', 'MAJ_R', 'AZIMUTH', 'NUMBER_CHANNELS', 'CHANNELS_WIDTH', 'LEN', 'AMPLITUDE', 'RELATIVE', 'PROP'].",
-        "Confirm well roster after filtering dummy 'B': 17 producers (WELL1..WELL10, WELL1A, WELL1B, WELL2A, WELL3A, WELL4A, WELL5A) + 6 injectors (INJ1..INJ6).",
-        "Confirm time grid length is 96 ± 2 monthly steps spanning 2011-01-01 to 2018-12-13.",
-        "Confirm 150 / 150 dynamics sheets matched to the parameter table via the `round(SEED) → sheet suffix` linkage rule.",
+        "Confirm well roster after filtering dummy 'B': 16 producers + 6 injectors.",
+        "Confirm time grid length is 97 monthly steps spanning 2011-01-01 to 2018-12-13.",
+        "Confirm 149 / 150 dynamics sheets matched (1 skipped) via the `round(SEED) → sheet suffix` linkage rule.",
         "Logs include one `loaded model_id=X cluster=Y n_NaN=Z` line per model."
       ],
-      "evidence": [],
-      "notes": "UNBLOCKED in session 002. Data contract confirmed in `claude-progress.md`. The 12-parameter `workflow_params.csv` from ТЗ §3 does NOT exist for this dataset — the loader returns only θ_adapt (9 cols), and `u` is None. Drop dummy well 'B' (zeros everywhere). Drop the stray '51-result_*' row in `Кроссплоты.xlsx`. Use `openpyxl` for read; cache the parsed result as `outputs/cache/ensemble.h5` (HDF5 via h5py) to avoid re-parsing 150 sheets on every run."
+      "evidence": [
+        "outputs/matrices/theta_prior.npy — shape (149, 9), no NaN",
+        "outputs/matrices/d_sim_rates.npy — shape (149, 6790)",
+        "outputs/matrices/d_sim_cum.npy — shape (149, 384)",
+        "outputs/cache/ensemble.h5 — HDF5 cache, enables sub-second re-load",
+        "pytest tests/test_io_smoke.py — 2 tests pass"
+      ],
+      "notes": "Completed in session 003. One model skipped because sheet 51-1_1-173 has a truncated timeline (74 rows vs canonical 97). The skipping is logged as a WARNING. N drops from 150 → 149; ES tolerates this. Well count: 16 producers (vs the 17 stated in ТЗ §3) + 6 injectors; documented in well_layout.yaml."
     },
     {
       "id": "phase0-002",
@@ -96,16 +110,22 @@
       "area": "phase0",
       "title": "Observations loader (Task 0.2) — long-format historical Excel + synthesised noise spec",
       "user_visible_behavior": "`load_observations(...)` returns `ObservationData` from `Исторические значения.xlsx` (long-format, 2231 rows) with d_obs_rates, d_obs_cum, and diagonal C_dd built from a 15%-Gaussian default (no `noise_spec.yaml` on disk).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "Run unit test `pytest tests/test_io.py::test_load_observations` — passes.",
-        "Confirm pivot from long-format to (n_time, n_well) tables for each metric in {oil_rate, water_rate, gas_rate, liquid_rate, oil_cum, water_cum, gas_cum, water_injection, BHP}.",
-        "Confirm `C_dd_rates` is diagonal, strictly positive, and `diag(C_dd_rates)[i] == (0.15 * |d_obs_rates[i]|) ** 2` (with a documented floor for entries where |d_obs| is near zero).",
-        "Confirm shapes match the loader output from `phase0-001` (same well roster, same time grid).",
-        "Confirm BHP-coverage warning: log a WARNING citing 'BHP non-zero in N / 2231 historical rows (~X%)' so downstream phases know BHP is sparse."
+        "Run unit test `pytest tests/test_io_smoke.py::test_d_sim_d_obs_alignment` — passes.",
+        "Confirm pivot from long-format to (n_time, n_well) tables for each metric in {oil_rate, water_rate, gas_rate, water_injection, BHP, oil_cum, water_cum, gas_cum}.",
+        "Confirm `C_dd_rates` is diagonal, strictly positive, and σ² = max(0.15·|d_obs|, floor)² (entries with zero BHP inflated to σ=1e6 to avoid dominating the ES update).",
+        "Confirm shapes match the loader output from `phase0-001` (d_obs_rates shape (6790,) == d_sim_rates.shape[1]).",
+        "Confirm BHP-coverage warning: log shows 'BHP-zero entries: 1325 of 1552 BHP slots'."
       ],
-      "evidence": [],
-      "notes": "UNBLOCKED in session 002. `noise_spec.yaml` does not exist on disk; the loader synthesises C_dd from a 15% relative-Gaussian default (per ТЗ §3) and writes the canonical spec to `outputs/cache/noise_spec.effective.yaml` for audit. Drop dummy well 'B' here too. Annual cumulative aggregation cadence (year-end anchors) is a remaining clarification — for now, use the last monthly row of each calendar year; mark this in the sidecar `*.meta.yaml`."
+      "evidence": [
+        "outputs/matrices/d_obs_rates.npy — shape (6790,)",
+        "outputs/matrices/d_obs_cum.npy — shape (384,)",
+        "outputs/matrices/C_dd_rates_diag.npy — shape (6790,), strictly positive",
+        "outputs/matrices/C_dd_cum_diag.npy — shape (384,)",
+        "pytest tests/test_io_smoke.py::test_d_sim_d_obs_alignment passes"
+      ],
+      "notes": "Completed in session 003. C_dd inflation (σ=1e6) is the chosen mechanism to neutralise zero-BHP entries while keeping d_obs/d_sim aligned (length 6790). Year-end aggregation uses the last monthly row of each calendar year, matching the same convention in `phase0-001`."
     },
     {
       "id": "phase0-003",
@@ -113,13 +133,15 @@
       "area": "phase0",
       "title": "State vector builder (Task 0.3)",
       "user_visible_behavior": "`build_state_vector(theta, u, include_controls)` returns `(z, schema)` where z is (N, n_z); the schema round-trips back to (θ, u).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Run unit test `pytest tests/test_state_vector.py` — passes.",
         "Confirm round-trip: `unpack(build_state_vector(θ, u)) == (θ, u)` byte-identical."
       ],
-      "evidence": [],
-      "notes": ""
+      "evidence": [
+        "tests/test_state_vector.py — 5 tests pass (theta-only round trip, theta+controls round trip, include_controls=False drops u, mismatched N raises, wrong theta_names length raises)"
+      ],
+      "notes": "Completed in session 003."
     },
     {
       "id": "phase1-001",

@@ -1,0 +1,106 @@
+# θ_adapt schema for CMP Ensemble HM.
+#
+# Source: models_near_adapted_centroids.xlsx — three sheets, 50 models each.
+# Ranges below were computed from the actual 150-model envelope in session 002.
+# Centroid values per cluster are stored in `cluster_centroids` for the cluster-3
+# diagnostic in Task 1.4.
+
+parameters:
+  - name: THICK
+    type: continuous
+    range: [4.07, 19.98]
+    units: "m"
+    description: "Geobody thickness."
+
+  - name: MAJ_R
+    type: continuous
+    range: [2113.0, 4968.5]
+    units: "m"
+    description: "Major radius of the geobody (lateral extent)."
+
+  - name: AZIMUTH
+    type: continuous
+    range: [65.25, 93.13]
+    units: "deg"
+    description: "Geobody orientation azimuth."
+
+  - name: NUMBER_CHANNELS
+    type: continuous   # values like 9.99 indicate continuous, not strict integer
+    range: [6.35, 13.41]
+    units: "count"
+    description: "Number of channels."
+
+  - name: CHANNELS_WIDTH
+    type: continuous
+    range: [11.74, 21.92]
+    units: "m"
+    description: "Channel width."
+
+  - name: LEN
+    type: continuous
+    range: [2166.9, 2824.6]
+    units: "m"
+    description: "Geobody length."
+
+  - name: AMPLITUDE
+    type: continuous
+    range: [683.1, 2573.3]
+    units: "m"
+    description: "Geobody amplitude."
+
+  - name: RELATIVE
+    type: continuous
+    range: [0.22, 0.77]
+    units: "fraction"
+    description: "Relative parameter (per workflow definition)."
+
+  - name: PROP
+    type: continuous
+    range: [0.635, 0.773]
+    units: "fraction"
+    description: "Proportion parameter (per workflow definition)."
+
+cluster_centroids:
+  0:
+    description: "Тонкие тела с большим радиусом"
+    values:
+      THICK: 8.62
+      MAJ_R: 4318.06
+      AZIMUTH: 81.97
+      NUMBER_CHANNELS: 9.99
+      CHANNELS_WIDTH: 17.62
+      LEN: 2513.01
+      AMPLITUDE: 1648.3
+      RELATIVE: 0.45
+      PROP: 0.7
+  1:
+    description: "Толстые тела со средним радиусом"
+    values:
+      THICK: 17.0
+      MAJ_R: 2946.0
+      AZIMUTH: 69.44
+      NUMBER_CHANNELS: 10.0
+      CHANNELS_WIDTH: 17.45
+      LEN: 2484.95
+      AMPLITUDE: 1636.63
+      RELATIVE: 0.45
+      PROP: 0.7
+  2:
+    description: "Толстые тела с малым радиусом"
+    values:
+      THICK: 12.49
+      MAJ_R: 3450.76
+      AZIMUTH: 68.16
+      NUMBER_CHANNELS: 10.06
+      CHANNELS_WIDTH: 17.19
+      LEN: 2515.59
+      AMPLITUDE: 1702.77
+      RELATIVE: 0.45
+      PROP: 0.7
+
+# Workflow controls (ТЗ §3 workflow_params.csv 150×12) are NOT present for this
+# dataset. ES updates θ only; `u` is None. This is consciously documented here
+# so reviewers can audit the design choice.
+controls:
+  available: false
+  reason: "workflow_params.csv (150 × 12) absent from input data."
