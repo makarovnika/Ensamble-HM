@@ -87,25 +87,31 @@ def _df_to_html(df: pd.DataFrame | None, max_rows: int | None = 50) -> str:
 
 
 _BASE_CSS = """
+<meta name="color-scheme" content="light only">
 <style>
+  /* Force light theme regardless of OS / browser dark-mode preference. */
+  :root { color-scheme: light; }
+  html, body { background: #ffffff; }
   body { font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-         color: #222; max-width: 1100px; margin: 2em auto; padding: 0 1em;
+         color: #1a1a1a; max-width: 1100px; margin: 2em auto; padding: 0 1em;
          line-height: 1.5; }
-  h1, h2, h3 { color: #1a1a1a; }
-  h1 { border-bottom: 2px solid #333; padding-bottom: 0.3em; }
-  h2 { margin-top: 1.6em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
-  h3 { margin-top: 1.2em; color: #444; }
-  .meta { color: #666; font-size: 0.88em; margin-bottom: 1.6em; }
-  .muted { color: #888; font-style: italic; }
+  h1, h2, h3 { color: #111; }
+  h1 { border-bottom: 2px solid #2b2b2b; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.6em; border-bottom: 1px solid #d4d4d4; padding-bottom: 0.2em; }
+  h3 { margin-top: 1.2em; color: #333; }
+  .meta { color: #5a5a5a; font-size: 0.88em; margin-bottom: 1.6em; }
+  .muted { color: #777; font-style: italic; }
   .kv { display: grid; grid-template-columns: 14em 1fr; gap: 0.2em 0.8em;
         font-size: 0.92em; margin: 0.6em 0 1em 0; }
-  .kv dt { font-weight: 600; color: #555; }
-  .kv dd { margin: 0; }
-  .rep-table { border-collapse: collapse; margin: 0.8em 0; font-size: 0.86em; }
+  .kv dt { font-weight: 600; color: #444; }
+  .kv dd { margin: 0; color: #1a1a1a; }
+  .rep-table { background: #ffffff; color: #1a1a1a;
+               border-collapse: collapse; margin: 0.8em 0; font-size: 0.86em; }
   .rep-table th, .rep-table td { padding: 4px 9px; text-align: right;
                                    border-bottom: 1px solid #e0e0e0; }
-  .rep-table th { background: #f5f5f5; border-bottom: 2px solid #aaa;
+  .rep-table th { background: #f4f4f4; color: #222; border-bottom: 2px solid #aaa;
                    text-align: left; }
+  .rep-table tr:nth-child(even) td { background: #fafafa; }
   .rep-table td:first-child, .rep-table th:first-child { text-align: left; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
            font-size: 0.78em; font-weight: 600; }
@@ -115,14 +121,24 @@ _BASE_CSS = """
   .badge.info { background: #d1ecf1; color: #0c5460; }
   .fig { margin: 1em 0; text-align: center; }
   .fig img { max-width: 100%; height: auto; border: 1px solid #ddd;
-              border-radius: 4px; }
+              border-radius: 4px; background: #ffffff; }
   .fig figcaption { color: #555; font-size: 0.86em; margin-top: 0.3em; }
   ul.compact { margin: 0.3em 0; padding-left: 1.4em; }
   ul.compact li { margin: 0.15em 0; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2em; }
   a { color: #1a5fb4; }
+  a:visited { color: #6f42c1; }
+  pre, code { color: #1a1a1a; }
   pre { background: #f5f5f5; padding: 0.8em; border-radius: 4px;
         overflow-x: auto; font-size: 0.85em; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px;
+         font-size: 0.9em; }
+  /* Hard-override any user-agent dark-mode adjustments. */
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #ffffff !important; color: #1a1a1a !important; }
+    .rep-table tr:nth-child(even) td { background: #fafafa !important; }
+    .rep-table th { background: #f4f4f4 !important; color: #222 !important; }
+  }
 </style>
 """
 

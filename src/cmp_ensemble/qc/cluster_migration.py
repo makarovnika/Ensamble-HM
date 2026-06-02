@@ -110,7 +110,30 @@ def render_cluster_migration_html(
         height=300 * len(clusters),
         barmode="group",
         template="plotly_white",
+        # Force a fully white canvas so the figure never picks up a dark theme
+        # from the browser / OS even if plotly_white CDN gets a default override.
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(color="#1a1a1a"),
     )
+    fig.update_xaxes(gridcolor="#e0e0e0", zerolinecolor="#bbbbbb",
+                     tickfont=dict(color="#1a1a1a"))
+    fig.update_yaxes(gridcolor="#e0e0e0", zerolinecolor="#bbbbbb",
+                     tickfont=dict(color="#1a1a1a"))
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_html(str(out_path), include_plotlyjs="cdn")
+
+    # Wrap the plotly output so we can force light-mode at the HTML level too.
+    html = fig.to_html(include_plotlyjs="cdn", full_html=True)
+    light_head = (
+        '<meta name="color-scheme" content="light only">\n'
+        '<style>\n'
+        '  :root { color-scheme: light; }\n'
+        '  html, body { background: #ffffff !important; color: #1a1a1a !important; }\n'
+        '  @media (prefers-color-scheme: dark) {\n'
+        '    html, body { background: #ffffff !important; color: #1a1a1a !important; }\n'
+        '  }\n'
+        '</style>\n'
+    )
+    html = html.replace("<head>", "<head>\n" + light_head, 1)
+    out_path.write_text(html, encoding="utf-8")
     log.info(f"cluster migration diagnostic written to {out_path}")

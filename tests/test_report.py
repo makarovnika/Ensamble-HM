@@ -166,6 +166,31 @@ def test_report_html_contains_key_sections(tmp_path: Path) -> None:
     assert "C:\\" not in main and "C:/" not in main
 
 
+def test_report_forces_light_theme(tmp_path: Path) -> None:
+    """All HTML reports must explicitly force a light theme so they render
+    consistently regardless of the user's OS / browser dark-mode preference."""
+    _scaffold_minimal_outputs(tmp_path)
+    (tmp_path / "configs").mkdir(exist_ok=True)
+    (tmp_path / "configs" / "theta_schema.yaml").write_text(
+        "parameters: []\n", encoding="utf-8"
+    )
+    (tmp_path / "configs" / "well_layout.yaml").write_text(
+        "producers: []\ninjectors: []\n", encoding="utf-8"
+    )
+
+    paths = build_report(tmp_path)
+    for key in ("main", "qc"):
+        html = paths[key].read_text(encoding="utf-8")
+        # Hard requirements for a forced-light dashboard
+        assert 'color-scheme' in html and 'light' in html, (
+            f"{key} report missing <meta name='color-scheme' content='light only'>"
+        )
+        assert '#ffffff' in html, f"{key} report missing explicit white background"
+        assert 'prefers-color-scheme: dark' in html, (
+            f"{key} report missing dark-mode override CSS"
+        )
+
+
 def test_report_handles_missing_artefacts(tmp_path: Path) -> None:
     """build_report must not crash when most artefacts are missing."""
     (tmp_path / "configs").mkdir(parents=True, exist_ok=True)
