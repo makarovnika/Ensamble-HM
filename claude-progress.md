@@ -268,3 +268,29 @@ Newly surfaced by the audit:
   - modified: `src/cmp_ensemble/cli.py` (figures subcommand + Phase 3 wiring), `src/cmp_ensemble/viz/__init__.py`, `feature_list.json`, `claude-progress.md`.
 - Known risk or unresolved issue: none introduced. fig05_crps_time remains formally retired per session-005 audit (no d_truth → no CRPS to plot).
 - Next best step: the lowest-priority unfinished feature is now `phase3-007-report-html` (priority 23) — `cmp-ensemble report` HTML rollup. After that comes `docs-001` (priority 30) for README + docs/{data_format,methodology,troubleshooting}.md. Either is a clean win; the HTML rollup is mechanically smaller.
+
+### Session 009
+
+- Date: 2026-06-02
+- Goal: close `phase3-007-report-html` (priority 23) — assemble the project-level HTML rollup per ТЗ §8 + §11.
+- Completed:
+  - `src/cmp_ensemble/report.py` — `build_report(root)` renders two HTML files via inline Jinja2 templates:
+    - `outputs/report.html` (10.9 KB): project rollup with overview, Phase 0 data shapes, Phase 1 ES + QC numbers + spread_retention table, fig02 inline, Phase 2 selection counts + proxy verdict + per-cluster validation, Phase 3 metrics_summary embedded + fig03/04 inline, all figures listed, fig01 + fig06 inline, links to LaTeX table + figures_v2 mirror.
+    - `outputs/qc/qc_report.html` (17 KB): full Phase 1 QC summary — spread, cluster centroid shift, Mahalanobis migration (first 20 rows + summary stats), physical-bounds violations, duplicates, message log with PASS/WARN/INFO/FAIL badges.
+  - Every asset reference is POSIX-relative — the outputs/ directory is portable as a zip; no absolute paths leak.
+  - Graceful degradation: missing CSVs render as `<em>not available</em>` rather than crashing the report.
+  - CSS is inline (single embedded `<style>` block), so each HTML file is self-contained.
+  - `cmp-ensemble report` CLI subcommand registered. Reads everything already on disk; does NOT re-run any phase.
+  - `tests/test_report.py` — 3 tests:
+    - non-empty HTML files written (full minimal-fixture path);
+    - key sections present in main + QC reports; no absolute Windows paths leak;
+    - missing-artefacts path renders without crash.
+- Real-data run: `cmp-ensemble report` completes in < 2 s. Both HTML files open in a browser; relative links to figures and CSVs resolve correctly.
+- Verification run: `pytest -q` → 82 passed in 4.93 s.
+- Evidence captured: see feature_list.json phase3-007-report-html.evidence.
+- Commits: forthcoming — `phase3 phase3-007: cmp-ensemble report HTML rollup`.
+- Files or artifacts updated:
+  - new: `src/cmp_ensemble/report.py`, `tests/test_report.py`.
+  - modified: `src/cmp_ensemble/cli.py` (report subcommand), `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue: jinja2 (v3.1.6) is a runtime dependency for report generation. Already in pyproject.toml's dep list, but if the user installs `pip install -e . --no-deps` (as happens on the test machine) they need to `pip install jinja2` separately. Not blocking — the rest of the pipeline works without it.
+- Next best step: the lowest-priority unfinished code feature is now `docs-001` (priority 30) — README + docs/{data_format, methodology, troubleshooting}.md. After that: `tests-001-coverage` (priority 31) for four more unit-test modules. The `phase4-stub` at priority 99 is out of scope per ТЗ §12.

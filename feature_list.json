@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 007 — phase3-006 closed: fig01/02/06 + figures CLI subcommand + article_assets mirror)",
+  "last_updated": "2026-06-02 (session 008 — phase3-007 closed: cmp-ensemble report HTML rollup)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -486,16 +486,24 @@
       "priority": 23,
       "area": "phase3",
       "title": "`cmp-ensemble report` — assemble the final HTML rollup (ТЗ §8)",
-      "user_visible_behavior": "`cmp-ensemble report` builds `outputs/report.html` and `outputs/qc/qc_report.html` linking every artefact (matrices, QC tables, selection lists, forecast metrics, all 6 figures, ablation TeX).",
-      "status": "not_started",
+      "user_visible_behavior": "`cmp-ensemble report` builds `outputs/report.html` and `outputs/qc/qc_report.html` linking every artefact (matrices, QC tables, selection lists, forecast metrics, all 5 figures, ablation TeX). All links relative — the outputs/ directory is portable.",
+      "status": "passing",
       "verification": [
-        "CLI entry point `report` registered in `src/cmp_ensemble/cli.py`.",
-        "`outputs/report.html` opens in a browser without errors and embeds (or links to) all artefacts.",
-        "`outputs/qc/qc_report.html` summarises spread_retention, rank, Mahalanobis migration, bimodality, centroid shift, and physical-bounds violations.",
-        "Use Jinja2 templating; assets referenced by relative path so the report is portable inside `outputs/`."
+        "DONE: CLI entry point `report` registered in `src/cmp_ensemble/cli.py`.",
+        "DONE: `outputs/report.html` (10.9 KB) opens in a browser without errors and links to all artefacts.",
+        "DONE: `outputs/qc/qc_report.html` (17 KB) summarises spread_retention, rank, Mahalanobis migration, bimodality, centroid shift, physical-bounds violations, duplicates, and per-message log.",
+        "DONE: Jinja2 templating with inline string templates; every asset reference is POSIX-relative (`fig01_pipeline.png`, `qc/qc_report.html` …) so the outputs/ directory is portable as a zip.",
+        "DONE: graceful degradation — missing CSVs render as `<em>not available</em>` rather than crashing.",
+        "DONE: tests/test_report.py — 3 tests pass (HTML files non-empty; key sections present; missing-artefacts path works)."
       ],
-      "evidence": [],
-      "notes": "Required by ТЗ §8 and §11. Currently the CLI has no `report` subcommand."
+      "evidence": [
+        "src/cmp_ensemble/report.py — build_report(root) renders both HTML files from existing outputs/ artefacts",
+        "src/cmp_ensemble/cli.py @cli.command('report')",
+        "outputs/report.html (10.9 KB)",
+        "outputs/qc/qc_report.html (17 KB)",
+        "tests/test_report.py — 3 tests pass"
+      ],
+      "notes": "Closed in session 008. Reports include the QC verdict, evaluation_mode stamp, per-phase summary, embedded tables (spread retention, proxy validation, metrics summary), and inline figures (fig01..06). Bulky tables (mahalanobis_migration) are truncated to first 20 rows with a link to the full CSV. Git SHA + dirty flag in the meta line."
     },
     {
       "id": "phase3-008-evaluation-mode-stamp",

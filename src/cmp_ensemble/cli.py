@@ -957,6 +957,25 @@ def _run_phase_3(
     log.info("Phase 3 DONE")
 
 
+@cli.command(name="report")
+def report_cmd() -> None:
+    """Assemble outputs/report.html + outputs/qc/qc_report.html (ТЗ §8).
+
+    Reads everything already on disk under outputs/ — does NOT re-run any
+    phase. Produces a portable HTML rollup with relative links.
+    """
+    from cmp_ensemble.report import build_report
+
+    root = project_root()
+    log.info("=" * 60)
+    log.info("REPORT — building outputs/report.html + outputs/qc/qc_report.html")
+    log.info("=" * 60)
+    paths = build_report(root)
+    log.info(f"  → {paths['main'].relative_to(root)}")
+    log.info(f"  → {paths['qc'].relative_to(root)}")
+    log.info("REPORT DONE")
+
+
 @cli.command(name="figures")
 def figures_cmd() -> None:
     """Regenerate the manuscript figures from existing outputs.
