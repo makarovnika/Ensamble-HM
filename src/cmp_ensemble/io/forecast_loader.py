@@ -148,7 +148,7 @@ def load_tnav_forecast(
     decoded_path: Path,
     *,
     producer_wells: list[str],
-    seed_to_model_id: dict[int, tuple[int, int]],
+    cluster_seed_to_model_id: dict[tuple[int, int], int],
     history_cutoff: datetime = datetime(2019, 1, 1),
     cache_path: Path | None = None,
     use_cache: bool = True,
@@ -157,16 +157,21 @@ def load_tnav_forecast(
 
     Parameters
     ----------
-    decoded_path     : path to `decoded_results.xlsx`
-    producer_wells   : the well roster from the Phase 0 ensemble (we keep the
-                       same well order for d_sim/d_obs alignment downstream).
-    seed_to_model_id : mapping `{seed_int: (model_id, cluster_id)}` built from
-                       `models_near_adapted_centroids.xlsx`.
-    history_cutoff   : first day **inside** the forecast window. Any row with
-                       Дата >= cutoff is treated as forecast.
-    cache_path       : optional HDF5 cache path. Default
-                       `<repo>/outputs/cache/forecast.h5`.
-    use_cache        : reuse cache if present.
+    decoded_path             : path to `decoded_results.xlsx`.
+    producer_wells           : the well roster from the Phase 0 ensemble (we
+                               keep the same well order for downstream alignment).
+    cluster_seed_to_model_id : mapping ``{(cluster_id, seed_int): model_id}``
+                               built from the parameter manifest. Same seed
+                               can appear under multiple clusters because the
+                               manifest selects "models near each cluster
+                               centroid" independently — the same physical
+                               model can be in cluster 0's top-50 and cluster
+                               1's top-50 with different θ_adapt for each.
+    history_cutoff           : first day **inside** the forecast window. Any
+                               row with Дата >= cutoff is treated as forecast.
+    cache_path               : optional HDF5 cache path. Default
+                               ``<repo>/outputs/cache/forecast.h5``.
+    use_cache                : reuse cache if present.
     """
     if use_cache and cache_path is not None and cache_path.exists():
         cached = _load_from_cache(cache_path)
@@ -194,19 +199,14 @@ def load_tnav_forecast(
             log.warning(f"  skip non-model sheet {sh!r}")
             continue
         cluster_id, seed_int = parsed
-        if seed_int not in seed_to_model_id:
+        key = (cluster_id, seed_int)
+        if key not in cluster_seed_to_model_id:
             log.warning(
                 f"  sheet {sh!r} (cluster={cluster_id}, seed={seed_int}) "
-                "has no matching parameter row — skipping"
+                "has no matching (cluster, seed) entry in manifest — skipping"
             )
             continue
-        model_id, expected_cluster = seed_to_model_id[seed_int]
-        if expected_cluster != cluster_id:
-            log.warning(
-                f"  sheet {sh!r} cluster mismatch: file says {cluster_id}, "
-                f"manifest says {expected_cluster}; trusting manifest."
-            )
-            cluster_id = expected_cluster
+        model_id = cluster_seed_to_model_id[key]
 
         df = pd.read_excel(xl, sheet_name=sh)
         times = pd.to_datetime(df["Дата"])

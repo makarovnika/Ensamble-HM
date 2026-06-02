@@ -377,25 +377,37 @@ def _run_phase_2(root: Path, cfg: dict) -> None:
                  "Re-run when the forecast file is available.")
         return
     log.info(f"using forecast workbook: {decoded_path}")
-    # Build seed → (model_id, cluster_id) lookup from the parameter manifest
-    seed_to_model_id = {
-        int(s): (int(mid), int(cid))
+    # Build (cluster_id, seed) → model_id lookup. The same seed can appear in
+    # multiple clusters (a model "near both centroids"), so the key is the pair.
+    cluster_seed_to_model_id = {
+        (int(cid), int(s)): int(mid)
         for s, mid, cid in zip(
             ensemble.seeds, ensemble.model_ids, ensemble.cluster_ids
         )
     }
+    # Wipe any stale forecast cache from the previous buggy run.
+    if forecast_cache.exists():
+        forecast_cache.unlink()
     forecast = load_tnav_forecast(
         decoded_path=decoded_path,
         producer_wells=ensemble.producer_wells,
-        seed_to_model_id=seed_to_model_id,
+        cluster_seed_to_model_id=cluster_seed_to_model_id,
         cache_path=forecast_cache,
-        use_cache=True,
+        use_cache=False,
     )
 
-    # Pick the θ_prior rows that correspond to the forecast models
-    model_to_idx = {int(mid): i for i, mid in enumerate(ensemble.model_ids)}
+    # Pick the θ_prior rows that correspond to the forecast models.
+    # Key by (cluster_id, seed) — model_id alone is NOT unique across clusters.
+    cluster_seed_to_row = {
+        (int(cid), int(s)): i
+        for i, (cid, s) in enumerate(zip(ensemble.cluster_ids, ensemble.seeds))
+    }
     train_indices = np.array(
-        [model_to_idx[int(mid)] for mid in forecast.model_ids], dtype=int
+        [
+            cluster_seed_to_row[(int(cid), int(s))]
+            for cid, s in zip(forecast.cluster_ids, forecast.seeds)
+        ],
+        dtype=int,
     )
     Z_train = ensemble.theta[train_indices]
     cluster_ids_train = forecast.cluster_ids
