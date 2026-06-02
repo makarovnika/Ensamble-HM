@@ -67,8 +67,20 @@ def crps_per_column(
 ) -> np.ndarray:
     """Empirical CRPS estimator (Hersbach 2000 form) per column.
 
-    CRPS(F, y) ≈ E|X − y| − 0.5 · E|X − X'|
+    CRPS(F, y) ≈ E|X − y| − ½ · E|X − X'|
     where X, X' are iid samples from F.
+
+    Sample-based estimator (sorted x_(1) ≤ … ≤ x_(M)):
+
+        E|X − y|         ≈ (1/M)   · Σ_i |x_i − y|
+        ½ · E|X − X'|    ≈ (1/M²)  · Σ_k (2k − M − 1) · x_(k)
+
+    The second identity follows from Σ_{i,j} |x_i − x_j| = 2 Σ_k (2k − M − 1) x_(k)
+    on sorted samples; dividing by 2M² yields ½ · E|X − X'|.
+
+    Analytical sanity (tested in tests/test_metrics.py):
+      * CRPS(δ_x₀, y)            = |x₀ − y|
+      * CRPS(U[0, w], w/2)       = w/12
     """
     M, n_d = d_forecast.shape
     out = np.zeros(n_d)
@@ -76,12 +88,11 @@ def crps_per_column(
         x = d_forecast[:, j]
         y = float(d_truth[j])
         term1 = float(np.abs(x - y).mean())
-        # 0.5 * mean |x_i - x_j| over all pairs i,j (including i=j adds 0).
-        # Vectorised via sort: 2 * sum((2k - M - 1) * x_sorted[k]) / M²
+        # term2 = (1/M²) · Σ (2k − M − 1) · x_(k)  ==  ½ · E|X − X'|
         xs = np.sort(x)
         k = np.arange(1, M + 1)
         term2 = float((2 * k - M - 1).dot(xs) / (M * M))
-        out[j] = term1 - 0.5 * term2
+        out[j] = term1 - term2
     return out
 
 

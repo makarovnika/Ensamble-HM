@@ -314,3 +314,23 @@ Newly surfaced by the audit:
   - modified: `feature_list.json`, `claude-progress.md`.
 - Known risk or unresolved issue: none.
 - Next best step: lowest-priority unfinished features now are `tests-001-coverage` (priority 31 — `test_metrics`, `test_setups`, `test_selection`; `test_split` is already done) and `tracker-001-reconcile` (priority 32 — pre-commit hook to refuse `src/` commits without `feature_list.json` updates). Both are pure quality-of-life. `phase4-stub` at priority 99 is out of scope per ТЗ §12.
+
+### Session 011
+
+- Date: 2026-06-02
+- Goal: close `tests-001-coverage` (priority 31) — three additional ТЗ §9-mandated unit-test modules.
+- Completed:
+  - `tests/test_metrics.py` (9 tests) — analytical CRPS references: CRPS(δ_x₀, y) = |x₀ − y| on three truth values, **CRPS(U[0,w], w/2) = w/12** for w ∈ {1, 5, 100} within 2%, non-negativity on random inputs; coverage on truth-inside / outside / partial-match; width_ratio identity / 2× scaling / zero-denominator guard; median_shift constant offset.
+  - `tests/test_setups.py` (9 tests) — YAML parses three named setups; each setup's `use_es_update`/`use_localization`/`use_control_uncertainty`/`d_obs_type` flags assert correctly; setup3 with `controls_available=False` produces byte-equal d_forecast as setup2 + records the degradation note; setup3 with `controls_available=True` does NOT record the note; setup1 baseline-identity sanity.
+  - `tests/test_selection.py` (11 tests) — Mahalanobis ranking: first index = largest shift, ranking is a permutation, distances at returned indices monotone-decreasing, zero shift gives zero distance; compute planner: disjoint partition, exhaustive partition, top_x contains highest ranks, validation_subset ⊂ proxy_only, three CSVs written, invalid input rejected.
+  - **Bug found and fixed by the new Uniform-CRPS test**: `src/cmp_ensemble/forecast/metrics.py::crps_per_column` had `out[j] = term1 - 0.5 * term2`, but `term2` already equals `½ · E|X − X'|` (sample-based identity Σ_{i,j}|x_i − x_j| = 2Σ_k(2k − M − 1)·x_(k)). The extra ½ doubled the bias correction, so non-degenerate CRPS values came back as 2× their true magnitude. The fix is one character: `term1 - term2`. The degenerate-distribution test in `test_forecast.py` could not have caught this — `term2 = 0` there. **All real-data Phase 3 CRPS values produced before this fix were overstated by 2×.** None of the Phase 3 reports written by the project committed CRPS to disk (coverage was the only truth-dependent metric written), so no downstream artefact needs to be regenerated.
+  - Updated `feature_list.json`: `tests-001-coverage` → `passing` with full evidence, including the bug story; `last_updated` bumped.
+- Verification run: `pytest -q` → **114 passed in 5.24 s** (was 85; +29 new tests from this session). The Uniform CRPS test passes with the fixed estimator at 2% tolerance for w ∈ {1, 5, 100}.
+- Evidence captured: see `feature_list.json` `tests-001-coverage.evidence`.
+- Commits: forthcoming — `tests tests-001: +29 tests + fix Hersbach-2000 factor-of-2 CRPS bug`.
+- Files or artifacts updated:
+  - new: `tests/test_metrics.py`, `tests/test_setups.py`, `tests/test_selection.py`.
+  - modified: `src/cmp_ensemble/forecast/metrics.py` (CRPS bug fix + docstring with the sample-based identity derivation + tested analytical references); `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue:
+  - Existing `tests/test_forecast.py::test_crps_zero_when_truth_at_distribution_center` still passes — it asserts CRPS at degenerate distribution = |x − y|, which holds under both the buggy and the fixed estimator. The test should be augmented to also include a non-degenerate sanity case (the Uniform reference here covers that, so the gap is now closed).
+- Next best step: lowest-priority unfinished features are `tracker-001-reconcile` (priority 32 — pre-commit hook) and `phase4-stub` (priority 99 — explicitly out of scope per ТЗ §12). The project is effectively code-complete; remaining items are process / quality-of-life.

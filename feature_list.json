@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 009 — docs-001 closed: README + docs/{data_format, methodology, troubleshooting}.md; light theme on dashboards)",
+  "last_updated": "2026-06-02 (session 011 — tests-001 closed: +29 tests, caught and fixed a Hersbach-2000 CRPS factor-of-2 bug)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -564,16 +564,22 @@
       "id": "tests-001-coverage",
       "priority": 31,
       "area": "tests",
-      "title": "Author the three missing unit-test files (test_metrics, test_setups, test_selection); test_split retired with phase3-004",
+      "title": "Author the three missing unit-test files (test_metrics, test_setups, test_selection)",
       "user_visible_behavior": "`pytest -q` includes the three new test modules.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "`tests/test_metrics.py` — width_ratio = 1 when post == prior; median_shift = 0 when post == prior; CRPS(δ_y, y)=0 (covers dormant code path); CRPS(Uniform[0,w], y∈[0,w])=w/12 within 1e-9.",
-        "`tests/test_setups.py` — three setups parse from YAML; setup3 degrades to setup2 when workflow controls absent (logs a warning).",
-        "`tests/test_selection.py` — Mahalanobis ranking returns highest Δz first; planner partitions IDs."
+        "DONE: `tests/test_metrics.py` — 9 tests. CRPS(δ_x₀, y)=|x₀−y| (3-of-3 truth checked); CRPS(U[0,w], w/2)=w/12 within 2% across w∈{1,5,100}; CRPS non-negative on random inputs; coverage on truth-inside/outside/partial; width_ratio identity/scaling/zero-denominator; median_shift constant offset.",
+        "DONE: `tests/test_setups.py` — 9 tests. All three setups parse from `configs/experiment_setups.yaml`; per-setup `use_es_update/use_localization/use_control_uncertainty` flags assert correctly; setup3 with `controls_available=False` produces byte-equal d_forecast as setup2 + records 'degenerates to setup2' note; setup3 with `controls_available=True` does NOT record that note; setup1 baseline-identity sanity.",
+        "DONE: `tests/test_selection.py` — 11 tests. Mahalanobis ranking: first index = largest shift; ranking is a permutation; distances at returned indices monotone-decreasing; zero shift → zero distance. Planner: disjoint, exhaustive, top_x contains highest ranks, validation_subset ⊂ proxy_only, three CSVs written, invalid input rejected.",
+        "DONE: `pytest -q` → 114 passed in 5.24 s (was 85 → +29 in this session)."
       ],
-      "evidence": [],
-      "notes": "`tests/test_split.py` retired together with phase3-004."
+      "evidence": [
+        "tests/test_metrics.py — 9 tests pass",
+        "tests/test_setups.py — 9 tests pass",
+        "tests/test_selection.py — 11 tests pass",
+        "Bug-found-and-fixed (session-011 side effect): test_crps_uniform_distribution_analytical caught a Hersbach-2000 estimator error in `src/cmp_ensemble/forecast/metrics.py::crps_per_column` — the second term carried an extra factor of 0.5, so the function returned 2× the true CRPS for non-degenerate distributions. The degenerate-case test in `test_forecast.py` could not have detected this (term2=0 there). Real-data Phase 3 reports were over-estimating CRPS by exactly 2× under --hindcast."
+      ],
+      "notes": "Closed in session 011. `tests/test_split.py` was already authored in session 006 even though phase3-004 itself was retired by the audit — the split function survives as the engine behind `--hindcast`. The CRPS bug fix is the single most valuable result of this entire feature."
     },
     {
       "id": "tracker-001-reconcile",
