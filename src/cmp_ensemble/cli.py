@@ -20,8 +20,19 @@ from cmp_ensemble.ensemble.es_update import es_update
 from cmp_ensemble.ensemble.localization import adaptive_correlation_localization
 from cmp_ensemble.ensemble.state_vector import build_state_vector
 from cmp_ensemble.forecast.d_builders import build_d
+from cmp_ensemble.forecast.setups import (
+    build_metrics_summary,
+    run_setup1_naive,
+    run_setup2_localized,
+    run_setup3_full,
+)
 from cmp_ensemble.io.forecast_loader import load_tnav_forecast
 from cmp_ensemble.metadata import write_sidecar
+from cmp_ensemble.viz.ablation import (
+    build_latex_ablation_table,
+    fig03_ablation_p10p90,
+    fig04_cumulative_scatter,
+)
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -98,6 +109,12 @@ def cli(log_level: str) -> None:
     default=False,
     help="In Phase 2, collapse duplicate model_ids by averaging their θ_post copies.",
 )
+@click.option(
+    "--keep-ooe",
+    is_flag=True,
+    default=False,
+    help="In Phase 3, keep out-of-envelope proxy predictions in setup2/3.",
+)
 def run(
     phase: str,
     no_cache: bool,
@@ -107,6 +124,7 @@ def run(
     variant_label: str | None,
     clip_to_prior: bool,
     dedup_ensemble: bool,
+    keep_ooe: bool,
 ) -> None:
     """Run one or more pipeline phases."""
     root = project_root()
@@ -127,8 +145,8 @@ def run(
         _run_phase_1(root, cfg, overrides=overrides)
     if phase in ("2", "all"):
         _run_phase_2(root, cfg, dedup=dedup_ensemble)
-    if phase == "3":
-        click.echo("Phase 3 is not yet implemented.")
+    if phase in ("3", "all"):
+        _run_phase_3(root, cfg, keep_ooe=keep_ooe)
 
 
 def _run_phase_0(root: Path, cfg: dict, *, use_cache: bool) -> None:
@@ -627,6 +645,136 @@ def _run_phase_2(root: Path, cfg: dict, *, dedup: bool = False) -> None:
     log.info(f"  Proxy verdict: {val.verdict} (median rel err = "
              f"{val.aggregate['median_rel_err']:.3f})")
     log.info(f"  Posterior-θ predictions: {ensemble.N - n_oo}/{ensemble.N} in-envelope")
+
+
+def _run_phase_3(root: Path, cfg: dict, *, keep_ooe: bool = False) -> None:
+    log.info("=" * 60)
+    log.info("PHASE 3 — ablation forecast (setup1 / setup2 / setup3)")
+    log.info("=" * 60)
+    log.info(f"  keep_ooe={keep_ooe} (whether to retain out-of-envelope proxy predictions)")
+
+    forecast_cache = root / cfg["io"]["cache_dir"] / "forecast.h5"
+    if not forecast_cache.exists():
+        log.error(
+            "outputs/cache/forecast.h5 not present. Run `cmp-ensemble run --phase 2` first."
+        )
+        return
+    paths = cfg["io"]["paths"]
+    cache_path = root / cfg["io"]["cache_dir"] / "ensemble.h5"
+    ensemble = load_tnav_ensemble(
+        parameters_path=root / paths["parameters"],
+        dynamics_path=root / paths["dynamics"],
+        cache_path=cache_path,
+        use_cache=True,
+    )
+    # Reconstruct seed_to_model mapping for the forecast cache reload
+    cluster_seed_to_model_id = {
+        (int(cid), int(s)): int(mid)
+        for s, mid, cid in zip(ensemble.seeds, ensemble.model_ids, ensemble.cluster_ids)
+    }
+    # Decoded forecast workbook (used if cache is stale; otherwise cache wins)
+    decoded_path = None
+    for raw in cfg["io"].get("forecast_paths", []):
+        candidate = (root / raw) if not raw.startswith("//") else Path(raw)
+        try:
+            if candidate.exists():
+                decoded_path = candidate
+                break
+        except OSError:
+            continue
+    forecast = load_tnav_forecast(
+        decoded_path=decoded_path or Path("__missing__"),
+        producer_wells=ensemble.producer_wells,
+        cluster_seed_to_model_id=cluster_seed_to_model_id,
+        cache_path=forecast_cache,
+        use_cache=True,
+    )
+    log.info(f"baseline forecast: M={forecast.model_ids.size}, cluster counts: "
+             + ", ".join(f"c{cl}={(forecast.cluster_ids == cl).sum()}"
+                          for cl in sorted(set(forecast.cluster_ids.tolist()))))
+
+    # Phase 2 proxy predictions
+    proxy_path = root / "outputs" / "selection" / "d_forecast_post_via_proxy.npy"
+    oo_path = root / "outputs" / "selection" / "d_forecast_post_out_of_envelope.npy"
+    if not proxy_path.exists() or not oo_path.exists():
+        log.error("Phase 2 artefacts missing. Run `cmp-ensemble run --phase 2` first.")
+        return
+    d_proxy = np.load(proxy_path)
+    out_of_envelope = np.load(oo_path)
+
+    # Align: proxy predictions have 149 rows (one per ensemble member), with
+    # cluster_ids from ensemble. The forecast baseline has 123 rows with its
+    # own cluster_ids.
+    cluster_ids_proxy = ensemble.cluster_ids
+    cluster_ids_baseline = forecast.cluster_ids
+    index = forecast.cum_index   # both use cum index ordering
+
+    # Run setups
+    s1 = run_setup1_naive(
+        d_baseline=forecast.d_forecast_cum,
+        index=index,
+        cluster_ids=cluster_ids_baseline,
+        d_truth=None,
+    )
+    s2 = run_setup2_localized(
+        d_baseline=forecast.d_forecast_cum,
+        d_proxy_post=d_proxy,
+        index=index,
+        cluster_ids_baseline=cluster_ids_baseline,
+        cluster_ids_proxy=cluster_ids_proxy,
+        out_of_envelope=out_of_envelope,
+        keep_out_of_envelope=keep_ooe,
+    )
+    s3 = run_setup3_full(
+        d_baseline=forecast.d_forecast_cum,
+        d_proxy_post=d_proxy,
+        index=index,
+        cluster_ids_baseline=cluster_ids_baseline,
+        cluster_ids_proxy=cluster_ids_proxy,
+        out_of_envelope=out_of_envelope,
+        controls_available=False,
+        keep_out_of_envelope=keep_ooe,
+    )
+    results = [s1, s2, s3]
+    for r in results:
+        log.info(f"  {r.label}: M={r.d_forecast.shape[0]}, notes: {'; '.join(r.notes) or 'none'}")
+
+    out_dir = root / "outputs" / "forecast"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Per-setup CSV
+    from cmp_ensemble.forecast.aggregation import field_total_quantiles
+    for r in results:
+        ft = field_total_quantiles(r.d_forecast, r.index)
+        p_ft = out_dir / f"{r.label}_field_total_quantiles.csv"
+        ft.to_csv(p_ft, index=False, encoding="utf-8")
+        write_sidecar(p_ft, config=cfg, repo_root=root,
+                      extra={"phase": 3, "setup": r.label, "M": int(r.d_forecast.shape[0])})
+        log.info(f"  → outputs/forecast/{p_ft.name} ({len(ft)} rows)")
+
+    # Summary table
+    summary = build_metrics_summary(results)
+    p_sum = out_dir / "metrics_summary.csv"
+    summary.to_csv(p_sum, index=False, encoding="utf-8")
+    write_sidecar(p_sum, config=cfg, repo_root=root, extra={"phase": 3})
+    log.info(f"  → outputs/forecast/metrics_summary.csv")
+    log.info(f"\n{summary.to_string(index=False)}")
+
+    # Figures
+    figures_dir = root / "outputs" / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    fig03 = fig03_ablation_p10p90(results, figures_dir / "fig03_ablation_p10p90.png")
+    fig04 = fig04_cumulative_scatter(results, figures_dir / "fig04_cumulative_scatter.png")
+    log.info(f"  → {fig03}")
+    log.info(f"  → {fig04}")
+
+    # LaTeX table
+    tex_dir = root / "outputs" / "article_assets"
+    tex_dir.mkdir(parents=True, exist_ok=True)
+    p_tex = build_latex_ablation_table(summary, tex_dir / "ablation_table.tex")
+    log.info(f"  → {p_tex}")
+
+    log.info("Phase 3 DONE")
 
 
 @cli.command(name="compare-phase1")
