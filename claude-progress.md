@@ -334,3 +334,22 @@ Newly surfaced by the audit:
 - Known risk or unresolved issue:
   - Existing `tests/test_forecast.py::test_crps_zero_when_truth_at_distribution_center` still passes — it asserts CRPS at degenerate distribution = |x − y|, which holds under both the buggy and the fixed estimator. The test should be augmented to also include a non-degenerate sanity case (the Uniform reference here covers that, so the gap is now closed).
 - Next best step: lowest-priority unfinished features are `tracker-001-reconcile` (priority 32 — pre-commit hook) and `phase4-stub` (priority 99 — explicitly out of scope per ТЗ §12). The project is effectively code-complete; remaining items are process / quality-of-life.
+
+### Session 012
+
+- Date: 2026-06-02
+- Goal: close `tracker-001-reconcile` (priority 32) — install a pre-commit hook that refuses commits touching `src/` without an accompanying tracker update, to prevent the session-005 audit's "phase 2 + 3 code shipped without tracker entries" pattern from recurring.
+- Completed:
+  - `scripts/pre-commit.sh` — POSIX shell hook. Reads `git diff --cached --name-only --diff-filter=ACM`, classifies each staged file as `src/` / tracker / other, blocks iff `(touched_src AND NOT touched_tracker AND ALLOW_SRC_ONLY≠1)`. Clear multi-line error message with the bypass instruction.
+  - `src/cmp_ensemble/tracker.py` — Python mirror of the same rule (`HookDecision`, `decide(staged_files, allow_src_only)`). Used by the test suite — the shell hook itself stays a thin wrapper but the rule is testable.
+  - `scripts/install_hooks.sh` + `scripts/install_hooks.ps1` — installers for Git Bash and PowerShell. Copy `scripts/pre-commit.sh` to `.git/hooks/pre-commit` and chmod +x (no-op on Windows). Idempotent.
+  - `tests/test_tracker_hook.py` — 14 tests: every branch of `decide()` including Windows-style backslash paths, partial-match false positives (`srclient.txt`, `feature_list.json.bak`); the shell hook exists + non-empty + has bypass + syntactically valid (`bash -n`, gated by `bash` being on PATH); installer scripts exist.
+  - Live verification on this repo: installed the hook, ran `git commit` with only `src/cmp_ensemble/tracker.py` staged → **hook rejected the commit** with the discipline message. The same commit succeeds once `feature_list.json` is added to the index.
+- Verification run: `pytest -q tests/test_tracker_hook.py` → 13 passed + 1 skipped (bash-syntax check skipped because `shutil.which('bash')` returned None under the PowerShell test runner). On Git Bash this skip is exercised and the script parses cleanly.
+- Evidence captured: see `feature_list.json` `tracker-001-reconcile.evidence`.
+- Commits: forthcoming — `tracker tracker-001: pre-commit hook + installers + 14 hook tests`.
+- Files or artifacts updated:
+  - new: `scripts/pre-commit.sh`, `scripts/install_hooks.sh`, `scripts/install_hooks.ps1`, `src/cmp_ensemble/tracker.py`, `tests/test_tracker_hook.py`.
+  - modified: `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue: contributors must run `bash scripts/install_hooks.sh` (or `pwsh scripts/install_hooks.ps1`) once on a fresh clone — git does not version-control hooks. This is documented in the hook's own message and in the next README update.
+- Next best step: only `phase4-stub` (priority 99) remains at `not_started`, and it is **explicitly out of scope per ТЗ §12**. The project is now code-complete. Remaining items are the three human-in-the-loop STOPs (`phase1-stop`, `phase2-stop`, `phase3-stop` — priorities 11, 15, 21) which require user sign-off rather than agent action.

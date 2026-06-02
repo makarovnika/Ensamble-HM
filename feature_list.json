@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 011 — tests-001 closed: +29 tests, caught and fixed a Hersbach-2000 CRPS factor-of-2 bug)",
+  "last_updated": "2026-06-02 (session 012 — tracker-001 closed: pre-commit hook + installers + 14 hook tests; live-verified rejection on src-only stage)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -586,14 +586,23 @@
       "priority": 32,
       "area": "tracker",
       "title": "Process discipline: enforce 'no commit without feature_list.json update'",
-      "user_visible_behavior": "A pre-commit hook (or CI check) refuses commits that touch `src/` without also touching `feature_list.json` or `claude-progress.md`.",
-      "status": "not_started",
+      "user_visible_behavior": "A pre-commit hook refuses commits that touch `src/` without also touching `feature_list.json` or `claude-progress.md`. Bypass escape hatch: `ALLOW_SRC_ONLY=1 git commit ...`. Installable via `scripts/install_hooks.{sh,ps1}` on Git Bash or PowerShell.",
+      "status": "passing",
       "verification": [
-        "`.git/hooks/pre-commit` (or `.pre-commit-config.yaml`) implements the check.",
-        "Try `git commit` with a src-only change → hook rejects."
+        "DONE: `scripts/pre-commit.sh` — POSIX shell hook with bypass logic + clear error message.",
+        "DONE: `src/cmp_ensemble/tracker.py` — Python mirror of the same rule (`decide(staged_files, allow_src_only)`); used by the test suite.",
+        "DONE: `scripts/install_hooks.sh` + `scripts/install_hooks.ps1` — installers that copy the hook into `.git/hooks/pre-commit` and chmod +x (no-op on Windows).",
+        "DONE: `tests/test_tracker_hook.py` — 14 tests (13 pass + 1 skip-when-no-bash): every branch of `decide()` + hook script exists + bypass logic present + bash syntax-check + installer scripts present.",
+        "DONE: live verification — `git commit` with src/ alone staged is rejected with the discipline message; the same commit with feature_list.json added passes."
       ],
-      "evidence": [],
-      "notes": "Phase 2 and Phase 3 code shipped in 77a76c8 and 7d1826b WITHOUT marking the corresponding features as passing — this audit had to reverse-engineer the state. This hook prevents the same drift in future sessions."
+      "evidence": [
+        "scripts/pre-commit.sh (POSIX shell hook)",
+        "scripts/install_hooks.sh + scripts/install_hooks.ps1 (installers)",
+        "src/cmp_ensemble/tracker.py (Python mirror for testability)",
+        ".git/hooks/pre-commit (installed copy; git does not version-control hooks)",
+        "tests/test_tracker_hook.py — 14 tests"
+      ],
+      "notes": "Closed in session 012. Phase 2 + Phase 3 code shipped in commits 77a76c8 / 7d1826b without marking the corresponding features as passing — the session-005 audit had to reverse-engineer the state. This hook prevents the same drift in future sessions. New contributors: run `bash scripts/install_hooks.sh` (or `pwsh scripts/install_hooks.ps1`) once on a fresh clone."
     },
     {
       "id": "viz-001-tier-a-static",
