@@ -38,6 +38,12 @@ io:
     dynamics: "Показатели динамики.xlsx"
     history: "Исторические значения.xlsx"
     crossplots: "Кроссплоты.xlsx"
+  # Forecast workbook: try the local copy first, fall back to the UNC share.
+  # Drop a copy under data/forecast/ to make the pipeline reproducible without
+  # network access.
+  forecast_paths:
+    - "data/forecast/decoded_results.xlsx"
+    - "//W11069/watt-adapt/Садаптированные модели/Апи прогноз/результаты расчета/decoded_results.xlsx"
 
 logging:
   level: "INFO"

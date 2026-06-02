@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 import numpy as np
+import pandas as pd
 
 from cmp_ensemble.config import (
     load_default_config,
@@ -18,6 +19,7 @@ from cmp_ensemble.ensemble.es_update import es_update
 from cmp_ensemble.ensemble.localization import adaptive_correlation_localization
 from cmp_ensemble.ensemble.state_vector import build_state_vector
 from cmp_ensemble.forecast.d_builders import build_d
+from cmp_ensemble.io.forecast_loader import load_tnav_forecast
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -26,6 +28,12 @@ from cmp_ensemble.qc.cluster_migration import (
     build_cluster_migration_table,
     render_cluster_migration_html,
 )
+from cmp_ensemble.selection.linear_proxy import build_per_cluster_proxies
+from cmp_ensemble.selection.mahalanobis import (
+    mahalanobis_distance,
+    rank_by_parameter_change,
+)
+from cmp_ensemble.selection.validation import validate_proxy
 
 log = logging.getLogger("cmp_ensemble")
 
@@ -98,8 +106,10 @@ def run(
         _run_phase_0(root, cfg, use_cache=not no_cache)
     if phase in ("1", "all"):
         _run_phase_1(root, cfg, overrides=overrides)
-    if phase in ("2", "3") and phase != "0":
-        click.echo(f"Phase {phase} is not yet implemented.")
+    if phase in ("2", "all"):
+        _run_phase_2(root, cfg)
+    if phase == "3":
+        click.echo("Phase 3 is not yet implemented.")
 
 
 def _run_phase_0(root: Path, cfg: dict, *, use_cache: bool) -> None:
@@ -299,6 +309,171 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
         "matrices_dir": str(matrices_dir),
         "qc_dir": str(qc_dir),
     }
+
+
+def _run_phase_2(root: Path, cfg: dict) -> None:
+    log.info("=" * 60)
+    log.info("PHASE 2 — model selection + linear forecast proxy")
+    log.info("=" * 60)
+
+    paths = cfg["io"]["paths"]
+    cache_path = root / cfg["io"]["cache_dir"] / "ensemble.h5"
+    forecast_cache = root / cfg["io"]["cache_dir"] / "forecast.h5"
+
+    # Phase 0 ensemble (history)
+    ensemble = load_tnav_ensemble(
+        parameters_path=root / paths["parameters"],
+        dynamics_path=root / paths["dynamics"],
+        cache_path=cache_path,
+        use_cache=True,
+    )
+    # Phase 1 posterior
+    theta_post = np.load(root / "outputs" / "matrices" / "theta_post.npy")
+    if theta_post.shape != ensemble.theta.shape:
+        raise RuntimeError(
+            f"theta_post shape {theta_post.shape} != theta_prior {ensemble.theta.shape}. "
+            "Run Phase 1 first (or re-run if data changed)."
+        )
+
+    # Mahalanobis ranking
+    log.info("ranking models by ||Δθ||_M ...")
+    maha = mahalanobis_distance(ensemble.theta, theta_post)
+    order = rank_by_parameter_change(ensemble.theta, theta_post)
+    out_dir = root / "outputs" / "selection"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ranking_df = pd.DataFrame(
+        {
+            "rank": np.arange(1, ensemble.N + 1),
+            "model_id": ensemble.model_ids[order],
+            "cluster_id": ensemble.cluster_ids[order],
+            "seed": ensemble.seeds[order],
+            "sheet": [ensemble.sheet_names[i] for i in order],
+            "maha_distance": maha[order],
+        }
+    )
+    ranking_df.to_csv(out_dir / "mahalanobis_ranking.csv", index=False, encoding="utf-8")
+    log.info(f"  → outputs/selection/mahalanobis_ranking.csv  N={len(ranking_df)}")
+
+    # Forecast ingest (decoded_results.xlsx) — try each configured path,
+    # tolerating network failures.
+    decoded_path = None
+    for raw in cfg["io"].get("forecast_paths", []):
+        candidate = (root / raw) if not raw.startswith("//") else Path(raw)
+        try:
+            ok = candidate.exists()
+        except OSError as exc:
+            log.warning(f"  forecast path {candidate}: {exc}")
+            continue
+        if ok:
+            decoded_path = candidate
+            break
+    if decoded_path is None:
+        log.error(
+            "decoded_results.xlsx is not reachable at any configured path. "
+            "Either restore the UNC share or copy the file into "
+            "data/forecast/decoded_results.xlsx (local fallback)."
+        )
+        log.error("Phase 2 stops at Mahalanobis ranking. "
+                 "Re-run when the forecast file is available.")
+        return
+    log.info(f"using forecast workbook: {decoded_path}")
+    # Build seed → (model_id, cluster_id) lookup from the parameter manifest
+    seed_to_model_id = {
+        int(s): (int(mid), int(cid))
+        for s, mid, cid in zip(
+            ensemble.seeds, ensemble.model_ids, ensemble.cluster_ids
+        )
+    }
+    forecast = load_tnav_forecast(
+        decoded_path=decoded_path,
+        producer_wells=ensemble.producer_wells,
+        seed_to_model_id=seed_to_model_id,
+        cache_path=forecast_cache,
+        use_cache=True,
+    )
+
+    # Pick the θ_prior rows that correspond to the forecast models
+    model_to_idx = {int(mid): i for i, mid in enumerate(ensemble.model_ids)}
+    train_indices = np.array(
+        [model_to_idx[int(mid)] for mid in forecast.model_ids], dtype=int
+    )
+    Z_train = ensemble.theta[train_indices]
+    cluster_ids_train = forecast.cluster_ids
+    D_train = forecast.d_forecast_cum
+
+    log.info(
+        f"proxy training input: Z {Z_train.shape}, D {D_train.shape}, "
+        f"per-cluster sizes "
+        + ", ".join(
+            f"c{cl}={(cluster_ids_train == cl).sum()}"
+            for cl in sorted(set(cluster_ids_train.tolist()))
+        )
+    )
+
+    # Per-cluster linear proxy
+    log.info("training per-cluster linear proxy ...")
+    proxies = build_per_cluster_proxies(Z_train, D_train, cluster_ids_train)
+
+    # Save proxies
+    proxy_dir = out_dir / "proxies"
+    proxy_dir.mkdir(parents=True, exist_ok=True)
+    for cl, p in proxies.items():
+        np.savez(
+            proxy_dir / f"proxy_cluster{cl}.npz",
+            S=p.S,
+            z_bar=p.z_bar,
+            d_bar=p.d_bar,
+            envelope_min=p.envelope_min,
+            envelope_max=p.envelope_max,
+            n_train=p.n_train,
+        )
+        log.info(f"  → outputs/selection/proxies/proxy_cluster{cl}.npz "
+                 f"(n_train={p.n_train})")
+
+    # Validation: hold out 12% within each cluster
+    log.info("running proxy validation (12% held out per cluster) ...")
+    val = validate_proxy(Z_train, D_train, cluster_ids_train, val_fraction=0.12, seed=42)
+    val.per_cluster.to_csv(out_dir / "proxy_validation_per_cluster.csv", index=False)
+    val.val_predictions.to_csv(out_dir / "proxy_validation_per_member.csv", index=False)
+    pd.Series(val.aggregate).to_csv(out_dir / "proxy_validation_aggregate.csv", header=True)
+    log.info(f"  proxy verdict: {val.verdict}")
+    log.info(f"  per-cluster:\n{val.per_cluster.to_string(index=False)}")
+    log.info(f"  aggregate: {dict(val.aggregate)}")
+
+    # Use the trained proxies to estimate d_forecast for ALL 149 models given θ_post
+    log.info("applying proxies to θ_post for all members ...")
+    d_forecast_post_rows: list[np.ndarray] = []
+    out_of_envelope_rows: list[bool] = []
+    valid_rows: list[bool] = []
+    for i in range(ensemble.N):
+        cl = int(ensemble.cluster_ids[i])
+        proxy = proxies.get(cl)
+        if proxy is None:
+            d_forecast_post_rows.append(np.full(D_train.shape[1], np.nan))
+            out_of_envelope_rows.append(True)
+            valid_rows.append(False)
+            continue
+        z = theta_post[i]
+        d_forecast_post_rows.append(proxy.predict(z))
+        out_of_envelope_rows.append(not proxy.in_envelope(z))
+        valid_rows.append(True)
+    d_forecast_post = np.vstack(d_forecast_post_rows)
+    np.save(out_dir / "d_forecast_post_via_proxy.npy", d_forecast_post)
+    np.save(out_dir / "d_forecast_post_out_of_envelope.npy",
+            np.asarray(out_of_envelope_rows))
+    n_oo = int(sum(out_of_envelope_rows))
+    log.info(
+        f"  → outputs/selection/d_forecast_post_via_proxy.npy "
+        f"shape={d_forecast_post.shape}, out-of-envelope: {n_oo}/{ensemble.N}"
+    )
+
+    # Final summary
+    log.info("Phase 2 summary:")
+    log.info(f"  Mahalanobis ranking: N={ensemble.N}")
+    log.info(f"  Proxy clusters trained: {sorted(proxies.keys())}")
+    log.info(f"  Proxy verdict: {val.verdict} (median rel err = "
+             f"{val.aggregate['median_rel_err']:.3f})")
+    log.info(f"  Posterior-θ predictions: {ensemble.N - n_oo}/{ensemble.N} in-envelope")
 
 
 @cli.command(name="compare-phase1")
