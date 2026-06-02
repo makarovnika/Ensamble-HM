@@ -57,6 +57,7 @@ class ForecastData:
     forecast_time_steps: np.ndarray  # (n_forecast_months,)
     producer_wells: list[str]
     history_cutoff: datetime         # last historical date (start of forecast)
+    cumulative_anomaly: bool = False  # whether d_forecast_cum has at-cutoff subtracted
 
 
 def _parse_sheet_name(name: str) -> tuple[int, int] | None:
@@ -116,6 +117,7 @@ def _save_to_cache(data: ForecastData, path: Path) -> None:
             data=np.array([s.encode() for s in data.producer_wells]),
         )
         f.attrs["history_cutoff"] = data.history_cutoff.isoformat()
+        f.attrs["cumulative_anomaly"] = bool(data.cumulative_anomaly)
 
 
 def _load_from_cache(path: Path) -> ForecastData | None:
@@ -141,6 +143,7 @@ def _load_from_cache(path: Path) -> ForecastData | None:
             forecast_time_steps=f["forecast_time_steps"][:].astype("datetime64[ns]"),
             producer_wells=[s.decode() for s in f["producer_wells"][:]],
             history_cutoff=datetime.fromisoformat(f.attrs["history_cutoff"]),
+            cumulative_anomaly=bool(f.attrs.get("cumulative_anomaly", False)),
         )
 
 
@@ -150,6 +153,7 @@ def load_tnav_forecast(
     producer_wells: list[str],
     cluster_seed_to_model_id: dict[tuple[int, int], int],
     history_cutoff: datetime = datetime(2019, 1, 1),
+    cumulative_anomaly: bool = True,
     cache_path: Path | None = None,
     use_cache: bool = True,
 ) -> ForecastData:
@@ -214,6 +218,13 @@ def load_tnav_forecast(
         if not forecast_mask.any():
             log.warning(f"  sheet {sh!r}: no rows past {history_cutoff.date()} — skipping")
             continue
+        # Capture the at-cutoff row (last history row before forecast) for the
+        # cumulative-anomaly subtraction. If no history rows are present,
+        # at_cutoff_row is None and we keep totals as-is.
+        history_mask = times < pd.Timestamp(history_cutoff)
+        at_cutoff_row: pd.Series | None = None
+        if history_mask.any():
+            at_cutoff_row = df[history_mask].iloc[-1]
         fdf = df[forecast_mask].reset_index(drop=True)
         ftimes = pd.to_datetime(fdf["Дата"])
 
@@ -234,7 +245,9 @@ def load_tnav_forecast(
                         (metric, well, pd.Timestamp(t).to_pydatetime())
                     )
 
-        # Extract cumulative: year-end anchors within forecast window
+        # Extract cumulative: year-end anchors within forecast window.
+        # When cumulative_anomaly=True, subtract the at-cutoff value so the
+        # entry represents production added in the forecast period only.
         year_ends = _year_end_indices(ftimes)
         sorted_years = sorted(year_ends.keys())
         cum_vals: list[float] = []
@@ -247,9 +260,15 @@ def load_tnav_forecast(
                     if col
                     else np.zeros(len(fdf))
                 )
+                # Determine the baseline to subtract
+                if cumulative_anomaly and at_cutoff_row is not None and col is not None:
+                    raw = at_cutoff_row[col]
+                    baseline = float(pd.to_numeric(raw, errors="coerce")) if pd.notna(raw) else 0.0
+                else:
+                    baseline = 0.0
                 for y in sorted_years:
                     idx = year_ends[y]
-                    cum_vals.append(float(vals[idx]))
+                    cum_vals.append(float(vals[idx]) - baseline)
                     cum_index_local.append(
                         (
                             metric,
@@ -304,6 +323,7 @@ def load_tnav_forecast(
         forecast_time_steps=canonical_time,
         producer_wells=list(producer_wells),
         history_cutoff=history_cutoff,
+        cumulative_anomaly=cumulative_anomaly,
     )
     log.info(
         f"Loaded forecast ensemble: M={data.model_ids.size}, "

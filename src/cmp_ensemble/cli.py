@@ -15,11 +15,13 @@ from cmp_ensemble.config import (
     load_theta_schema,
     project_root,
 )
+from cmp_ensemble.ensemble.dedup import deduplicate_ensemble
 from cmp_ensemble.ensemble.es_update import es_update
 from cmp_ensemble.ensemble.localization import adaptive_correlation_localization
 from cmp_ensemble.ensemble.state_vector import build_state_vector
 from cmp_ensemble.forecast.d_builders import build_d
 from cmp_ensemble.io.forecast_loader import load_tnav_forecast
+from cmp_ensemble.metadata import write_sidecar
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -28,6 +30,7 @@ from cmp_ensemble.qc.cluster_migration import (
     build_cluster_migration_table,
     render_cluster_migration_html,
 )
+from cmp_ensemble.qc.misfit import per_well_misfit_summary, per_well_misfit_table
 from cmp_ensemble.selection.linear_proxy import build_per_cluster_proxies
 from cmp_ensemble.selection.mahalanobis import (
     mahalanobis_distance,
@@ -89,6 +92,12 @@ def cli(log_level: str) -> None:
     default=False,
     help="Clip θ_post to the prior support box defined in configs/theta_schema.yaml.",
 )
+@click.option(
+    "--dedup-ensemble",
+    is_flag=True,
+    default=False,
+    help="In Phase 2, collapse duplicate model_ids by averaging their θ_post copies.",
+)
 def run(
     phase: str,
     no_cache: bool,
@@ -97,6 +106,7 @@ def run(
     d_obs_type: str | None,
     variant_label: str | None,
     clip_to_prior: bool,
+    dedup_ensemble: bool,
 ) -> None:
     """Run one or more pipeline phases."""
     root = project_root()
@@ -108,6 +118,7 @@ def run(
         "d_obs_type": d_obs_type,
         "variant_label": variant_label,
         "clip_to_prior": clip_to_prior,
+        "dedup_ensemble": dedup_ensemble,
     }
 
     if phase in ("0", "all"):
@@ -115,7 +126,7 @@ def run(
     if phase in ("1", "all"):
         _run_phase_1(root, cfg, overrides=overrides)
     if phase in ("2", "all"):
-        _run_phase_2(root, cfg)
+        _run_phase_2(root, cfg, dedup=dedup_ensemble)
     if phase == "3":
         click.echo("Phase 3 is not yet implemented.")
 
@@ -280,13 +291,30 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
         model_ids=ensemble.model_ids,
     )
 
-    # Write matrices
+    # Write matrices + sidecar metadata
     matrices_dir.mkdir(parents=True, exist_ok=True)
-    np.save(matrices_dir / "theta_post.npy", result.Z_post)
-    np.save(matrices_dir / "K.npy", result.K)
-    np.save(matrices_dir / "locmask.npy", mask)
-    np.save(matrices_dir / "perturbations.npy", result.perturbations)
-    np.save(matrices_dir / "singular_values.npy", result.singular_values)
+    seed_phase1 = int(es_cfg["perturbation_seed"])
+    meta_extra_phase1 = {
+        "phase": 1,
+        "d_obs_type": d_obs_type,
+        "localization_factor": float(factor),
+        "localization_method": method,
+        "subspace_energy": float(es_cfg["subspace_energy"]),
+        "N": int(z.shape[0]),
+        "n_z": int(z.shape[1]),
+        "n_d": int(D_sim.shape[1]),
+        "clip_to_prior": bool(overrides.get("clip_to_prior", False)),
+    }
+    for name, arr in [
+        ("theta_post", result.Z_post),
+        ("K", result.K),
+        ("locmask", mask),
+        ("perturbations", result.perturbations),
+        ("singular_values", result.singular_values),
+    ]:
+        p = matrices_dir / f"{name}.npy"
+        np.save(p, arr)
+        write_sidecar(p, config=cfg, seed=seed_phase1, extra=meta_extra_phase1, repo_root=root)
     log.info(f"Phase 1 matrices written to {matrices_dir}")
     log.info(f"  theta_post.npy           shape={result.Z_post.shape}")
     log.info(f"  K.npy                    shape={result.K.shape}")
@@ -315,6 +343,21 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
     )
     migration_table.to_csv(qc_dir / "cluster_migration.csv", index=False, encoding="utf-8")
     render_cluster_migration_html(migration_table, qc_dir / "cluster3_diagnostic.html")
+
+    # Per-well misfit diagnostic (improve-E)
+    if d_obs_type in ("cumulative",):
+        misfit_index = ensemble.cum_index
+    elif d_obs_type in ("rates",):
+        misfit_index = ensemble.rate_index
+    else:  # hybrid → cumulative section only for clarity
+        misfit_index = ensemble.cum_index
+    misfit = per_well_misfit_table(d_obs, D_sim, misfit_index)
+    p_misfit = qc_dir / "per_well_misfit.csv"
+    p_misfit_summary = qc_dir / "per_well_misfit_summary.csv"
+    misfit.to_csv(p_misfit, index=False, encoding="utf-8")
+    per_well_misfit_summary(misfit).to_csv(p_misfit_summary, index=False, encoding="utf-8")
+    log.info(f"  → qc/per_well_misfit.csv ({len(misfit)} rows)")
+    log.info(f"  → qc/per_well_misfit_summary.csv")
 
     # Final status banner
     status = "PASSED" if qc.passed else "FAILED"
@@ -347,10 +390,12 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
     }
 
 
-def _run_phase_2(root: Path, cfg: dict) -> None:
+def _run_phase_2(root: Path, cfg: dict, *, dedup: bool = False) -> None:
     log.info("=" * 60)
     log.info("PHASE 2 — model selection + linear forecast proxy")
     log.info("=" * 60)
+    if dedup:
+        log.info("  --dedup-ensemble: collapsing duplicate model_ids by averaging θ_post")
 
     paths = cfg["io"]["paths"]
     cache_path = root / cfg["io"]["cache_dir"] / "ensemble.h5"
@@ -371,23 +416,54 @@ def _run_phase_2(root: Path, cfg: dict) -> None:
             "Run Phase 1 first (or re-run if data changed)."
         )
 
+    # Optional: collapse duplicates BEFORE ranking and proxy training.
+    if dedup:
+        d = deduplicate_ensemble(
+            Z_prior=ensemble.theta,
+            Z_post=theta_post,
+            model_ids=ensemble.model_ids,
+            cluster_ids=ensemble.cluster_ids,
+            seeds=ensemble.seeds,
+            sheet_names=ensemble.sheet_names,
+        )
+        theta_prior_for_rank = d.Z_prior_dedup
+        theta_post_for_rank = d.Z_post_dedup
+        model_ids_for_rank = d.model_ids_dedup
+        cluster_ids_for_rank = d.primary_cluster_ids
+        seeds_for_rank = d.seeds_dedup
+        sheet_names_for_rank = d.sheet_names_dedup
+    else:
+        theta_prior_for_rank = ensemble.theta
+        theta_post_for_rank = theta_post
+        model_ids_for_rank = ensemble.model_ids
+        cluster_ids_for_rank = ensemble.cluster_ids
+        seeds_for_rank = ensemble.seeds
+        sheet_names_for_rank = ensemble.sheet_names
+
+    N_eff = theta_prior_for_rank.shape[0]
+
     # Mahalanobis ranking
     log.info("ranking models by ||Δθ||_M ...")
-    maha = mahalanobis_distance(ensemble.theta, theta_post)
-    order = rank_by_parameter_change(ensemble.theta, theta_post)
+    maha = mahalanobis_distance(theta_prior_for_rank, theta_post_for_rank)
+    order = rank_by_parameter_change(theta_prior_for_rank, theta_post_for_rank)
     out_dir = root / "outputs" / "selection"
     out_dir.mkdir(parents=True, exist_ok=True)
     ranking_df = pd.DataFrame(
         {
-            "rank": np.arange(1, ensemble.N + 1),
-            "model_id": ensemble.model_ids[order],
-            "cluster_id": ensemble.cluster_ids[order],
-            "seed": ensemble.seeds[order],
-            "sheet": [ensemble.sheet_names[i] for i in order],
+            "rank": np.arange(1, N_eff + 1),
+            "model_id": model_ids_for_rank[order],
+            "cluster_id": cluster_ids_for_rank[order],
+            "seed": seeds_for_rank[order],
+            "sheet": [sheet_names_for_rank[i] for i in order],
             "maha_distance": maha[order],
         }
     )
-    ranking_df.to_csv(out_dir / "mahalanobis_ranking.csv", index=False, encoding="utf-8")
+    p_rank = out_dir / "mahalanobis_ranking.csv"
+    ranking_df.to_csv(p_rank, index=False, encoding="utf-8")
+    write_sidecar(
+        p_rank, config=cfg, repo_root=root,
+        extra={"phase": 2, "step": "mahalanobis_ranking", "N": int(ensemble.N)},
+    )
     log.info(f"  → outputs/selection/mahalanobis_ranking.csv  N={len(ranking_df)}")
 
     # Forecast ingest (decoded_results.xlsx) — try each configured path,
@@ -433,21 +509,37 @@ def _run_phase_2(root: Path, cfg: dict) -> None:
     )
 
     # Pick the θ_prior rows that correspond to the forecast models.
-    # Key by (cluster_id, seed) — model_id alone is NOT unique across clusters.
-    cluster_seed_to_row = {
-        (int(cid), int(s)): i
-        for i, (cid, s) in enumerate(zip(ensemble.cluster_ids, ensemble.seeds))
-    }
-    train_indices = np.array(
-        [
-            cluster_seed_to_row[(int(cid), int(s))]
-            for cid, s in zip(forecast.cluster_ids, forecast.seeds)
-        ],
-        dtype=int,
-    )
-    Z_train = ensemble.theta[train_indices]
-    cluster_ids_train = forecast.cluster_ids
-    D_train = forecast.d_forecast_cum
+    # Without dedup we key by (cluster_id, seed). With dedup we key by model_id
+    # (which is now unique in our dedup'd arrays).
+    if dedup:
+        mid_to_row = {int(m): i for i, m in enumerate(model_ids_for_rank)}
+        train_indices = np.array(
+            [mid_to_row[int(m)] for m in forecast.model_ids if int(m) in mid_to_row],
+            dtype=int,
+        )
+        # Some forecast models may be the SECOND copy of a deduplicated row.
+        # We use the deduped row index; the forecast model_id matches uniquely.
+        kept_forecast_mask = np.array(
+            [int(m) in mid_to_row for m in forecast.model_ids], dtype=bool
+        )
+        Z_train = theta_prior_for_rank[train_indices]
+        cluster_ids_train = cluster_ids_for_rank[train_indices]
+        D_train = forecast.d_forecast_cum[kept_forecast_mask]
+    else:
+        cluster_seed_to_row = {
+            (int(cid), int(s)): i
+            for i, (cid, s) in enumerate(zip(ensemble.cluster_ids, ensemble.seeds))
+        }
+        train_indices = np.array(
+            [
+                cluster_seed_to_row[(int(cid), int(s))]
+                for cid, s in zip(forecast.cluster_ids, forecast.seeds)
+            ],
+            dtype=int,
+        )
+        Z_train = ensemble.theta[train_indices]
+        cluster_ids_train = forecast.cluster_ids
+        D_train = forecast.d_forecast_cum
 
     log.info(
         f"proxy training input: Z {Z_train.shape}, D {D_train.shape}, "
@@ -506,9 +598,17 @@ def _run_phase_2(root: Path, cfg: dict) -> None:
         out_of_envelope_rows.append(not proxy.in_envelope(z))
         valid_rows.append(True)
     d_forecast_post = np.vstack(d_forecast_post_rows)
-    np.save(out_dir / "d_forecast_post_via_proxy.npy", d_forecast_post)
-    np.save(out_dir / "d_forecast_post_out_of_envelope.npy",
-            np.asarray(out_of_envelope_rows))
+    p_fp = out_dir / "d_forecast_post_via_proxy.npy"
+    p_oo = out_dir / "d_forecast_post_out_of_envelope.npy"
+    np.save(p_fp, d_forecast_post)
+    np.save(p_oo, np.asarray(out_of_envelope_rows))
+    write_sidecar(
+        p_fp, config=cfg, repo_root=root,
+        extra={"phase": 2, "step": "proxy_apply", "shape": list(d_forecast_post.shape),
+               "n_in_envelope": int((~np.asarray(out_of_envelope_rows)).sum()),
+               "proxy_verdict": val.verdict,
+               "proxy_median_rel_err": float(val.aggregate["median_rel_err"])},
+    )
     n_oo = int(sum(out_of_envelope_rows))
     log.info(
         f"  → outputs/selection/d_forecast_post_via_proxy.npy "
