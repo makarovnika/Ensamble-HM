@@ -158,19 +158,24 @@ def _run_phase_0(root: Path, cfg: dict, *, use_cache: bool) -> None:
         cum_index=ensemble.cum_index,
     )
 
-    # Write matrices
+    # Write matrices + sidecars
     matrices_dir = root / "outputs" / "matrices"
     matrices_dir.mkdir(parents=True, exist_ok=True)
-    np.save(matrices_dir / "theta_prior.npy", ensemble.theta)
-    np.save(matrices_dir / "d_sim_rates.npy", ensemble.d_sim_rates)
-    np.save(matrices_dir / "d_sim_cum.npy", ensemble.d_sim_cum)
-    np.save(matrices_dir / "d_obs_rates.npy", obs.d_obs_rates)
-    np.save(matrices_dir / "d_obs_cum.npy", obs.d_obs_cum)
-    # Save C_dd diagonals (full diag matrices are wasteful; keep both)
-    np.save(matrices_dir / "C_dd_rates_diag.npy", np.diag(obs.C_dd_rates))
-    np.save(matrices_dir / "C_dd_cum_diag.npy", np.diag(obs.C_dd_cum))
-    np.save(matrices_dir / "model_ids.npy", ensemble.model_ids)
-    np.save(matrices_dir / "cluster_ids.npy", ensemble.cluster_ids)
+    meta_extra_p0 = {"phase": 0, "N": int(ensemble.N), "n_theta": int(ensemble.n_theta)}
+    for name, arr in [
+        ("theta_prior", ensemble.theta),
+        ("d_sim_rates", ensemble.d_sim_rates),
+        ("d_sim_cum", ensemble.d_sim_cum),
+        ("d_obs_rates", obs.d_obs_rates),
+        ("d_obs_cum", obs.d_obs_cum),
+        ("C_dd_rates_diag", np.diag(obs.C_dd_rates)),
+        ("C_dd_cum_diag", np.diag(obs.C_dd_cum)),
+        ("model_ids", ensemble.model_ids),
+        ("cluster_ids", ensemble.cluster_ids),
+    ]:
+        p = matrices_dir / f"{name}.npy"
+        np.save(p, arr)
+        write_sidecar(p, config=cfg, extra=meta_extra_p0, repo_root=root)
     log.info(f"Phase 0 outputs written to {matrices_dir}")
     log.info(f"  theta_prior.npy        shape={ensemble.theta.shape}")
     log.info(f"  d_sim_rates.npy        shape={ensemble.d_sim_rates.shape}")
