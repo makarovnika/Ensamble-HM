@@ -191,15 +191,36 @@ def load_observations(
     else:
         zero_bhp = np.zeros(len(d_obs_rates), dtype=bool)
 
-    # Build diagonal C_dd
-    log.info(f"  building C_dd (rel_sigma={rel_sigma}, floor={floor_abs})")
-    sigma_rates = np.maximum(np.abs(d_obs_rates) * rel_sigma, floor_abs)
+    # Build diagonal C_dd.
+    # The floor was previously a single absolute value (1e-3), which is
+    # appropriate for rate metrics (sm³/day) but is wildly tight for cumulative
+    # gas (10⁹ sm³). Replace with a per-metric relative floor:
+    # σ_i ≥ max(rel_sigma · |d_obs_i|, 0.01 · median(|d_obs|) of the same metric).
+    def _build_diag_sigma(
+        d_obs: np.ndarray,
+        index: list[tuple[str, str, datetime]],
+    ) -> np.ndarray:
+        sigma = np.abs(d_obs) * rel_sigma
+        # group entries by metric and compute a per-metric soft floor
+        metrics = np.array([e[0] for e in index])
+        for m in set(metrics.tolist()):
+            mask = metrics == m
+            med_abs = float(np.median(np.abs(d_obs[mask])))
+            soft_floor = max(0.01 * med_abs, floor_abs)
+            below = mask & (sigma < soft_floor)
+            sigma[below] = soft_floor
+        return sigma
+
+    log.info(f"  building C_dd (rel_sigma={rel_sigma}, floor_abs={floor_abs}, per-metric soft floor)")
+    sigma_rates = _build_diag_sigma(d_obs_rates, rate_index)
     # inflate BHP-zero entries to make them effectively ignored
     sigma_rates[zero_bhp] = 1.0e6
     C_dd_rates = np.diag(sigma_rates ** 2)
 
-    sigma_cum = np.maximum(np.abs(d_obs_cum) * rel_sigma, floor_abs)
+    sigma_cum = _build_diag_sigma(d_obs_cum, cum_index)
     C_dd_cum = np.diag(sigma_cum ** 2)
+    log.info(f"  C_dd_rates condition: {np.diag(C_dd_rates).max() / max(np.diag(C_dd_rates).min(), 1e-30):.2e}")
+    log.info(f"  C_dd_cum condition:   {np.diag(C_dd_cum).max() / max(np.diag(C_dd_cum).min(), 1e-30):.2e}")
 
     return ObservationData(
         d_obs_rates=d_obs_rates,

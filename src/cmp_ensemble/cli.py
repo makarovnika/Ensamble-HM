@@ -83,6 +83,12 @@ def cli(log_level: str) -> None:
     help="If set, write outputs to outputs/phase1_variants/<label>/ instead of "
     "outputs/matrices and outputs/qc.",
 )
+@click.option(
+    "--clip-to-prior",
+    is_flag=True,
+    default=False,
+    help="Clip θ_post to the prior support box defined in configs/theta_schema.yaml.",
+)
 def run(
     phase: str,
     no_cache: bool,
@@ -90,6 +96,7 @@ def run(
     localization_method: str | None,
     d_obs_type: str | None,
     variant_label: str | None,
+    clip_to_prior: bool,
 ) -> None:
     """Run one or more pipeline phases."""
     root = project_root()
@@ -100,6 +107,7 @@ def run(
         "localization_method": localization_method,
         "d_obs_type": d_obs_type,
         "variant_label": variant_label,
+        "clip_to_prior": clip_to_prior,
     }
 
     if phase in ("0", "all"):
@@ -236,12 +244,40 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
         seed=es_cfg["perturbation_seed"],
     )
 
+    # Load parameter ranges from theta_schema.yaml for physical-bounds QC
+    theta_schema = load_theta_schema(root)
+    parameter_ranges: dict[str, tuple[float, float]] = {}
+    for p in theta_schema.get("parameters", []):
+        if "range" in p:
+            lo, hi = p["range"]
+            parameter_ranges[p["name"]] = (float(lo), float(hi))
+
+    # Optional clipping of θ_post to the prior support box
+    Z_post_for_qc = result.Z_post
+    if overrides.get("clip_to_prior") and parameter_ranges:
+        Z_post_clipped = result.Z_post.copy()
+        n_clipped = 0
+        for j, name in enumerate(ensemble.theta_names):
+            if name not in parameter_ranges:
+                continue
+            lo, hi = parameter_ranges[name]
+            below = Z_post_clipped[:, j] < lo
+            above = Z_post_clipped[:, j] > hi
+            n_clipped += int(below.sum() + above.sum())
+            Z_post_clipped[below, j] = lo
+            Z_post_clipped[above, j] = hi
+        log.warning(f"--clip-to-prior: clamped {n_clipped} θ_post entries to prior bounds")
+        result.Z_post = Z_post_clipped
+        Z_post_for_qc = Z_post_clipped
+
     # QC
     qc = run_qc_checks(
         Z_prior=z,
-        Z_post=result.Z_post,
+        Z_post=Z_post_for_qc,
         cluster_ids=ensemble.cluster_ids,
         theta_names=ensemble.theta_names,
+        parameter_ranges=parameter_ranges,
+        model_ids=ensemble.model_ids,
     )
 
     # Write matrices

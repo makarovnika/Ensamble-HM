@@ -31,6 +31,8 @@ class QCReport:
     mahalanobis_migration: np.ndarray            # (N,)
     bimodality_score: float
     cluster_centroid_shift: pd.DataFrame         # per cluster × per component
+    physical_bounds_violations: pd.DataFrame = field(default_factory=pd.DataFrame)
+    duplicate_models_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     messages: list[tuple[Level, str]] = field(default_factory=list)
 
     @property
@@ -91,6 +93,78 @@ def _mahalanobis_migration(
     return np.sqrt(np.einsum("ij,jk,ik->i", dz, inv, dz))
 
 
+def _check_physical_bounds(
+    Z_post: np.ndarray,
+    theta_names: list[str],
+    parameter_ranges: dict[str, tuple[float, float]] | None,
+) -> pd.DataFrame:
+    """For each parameter, count how many members of Z_post fall outside the
+    physically meaningful prior support [lo, hi]. Returns a per-parameter table.
+    """
+    if not parameter_ranges:
+        return pd.DataFrame()
+    rows = []
+    for j, name in enumerate(theta_names):
+        if name not in parameter_ranges:
+            continue
+        lo, hi = parameter_ranges[name]
+        below = int((Z_post[:, j] < lo).sum())
+        above = int((Z_post[:, j] > hi).sum())
+        rows.append(
+            {
+                "component": name,
+                "prior_min": lo,
+                "prior_max": hi,
+                "post_min": float(Z_post[:, j].min()),
+                "post_max": float(Z_post[:, j].max()),
+                "n_below_prior_min": below,
+                "n_above_prior_max": above,
+                "n_out_of_bounds": below + above,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _summarise_duplicate_models(
+    model_ids: np.ndarray,
+    cluster_ids: np.ndarray,
+    Z_prior: np.ndarray,
+    Z_post: np.ndarray,
+) -> pd.DataFrame:
+    """Detect models appearing in more than one cluster row and report how much
+    their two θ_post copies diverge."""
+    if model_ids is None or model_ids.size == 0:
+        return pd.DataFrame()
+    from collections import Counter
+
+    counts = Counter(model_ids.tolist())
+    dup_ids = [mid for mid, c in counts.items() if c > 1]
+    rows = []
+    for mid in dup_ids:
+        mask = model_ids == mid
+        idx = np.where(mask)[0]
+        # average shift magnitude
+        avg_shift = np.mean(
+            [np.linalg.norm(Z_post[i] - Z_prior[i]) for i in idx]
+        )
+        # divergence between two θ_post copies
+        if len(idx) >= 2:
+            div = np.linalg.norm(Z_post[idx[0]] - Z_post[idx[1]])
+        else:
+            div = 0.0
+        rows.append(
+            {
+                "model_id": int(mid),
+                "n_cluster_copies": int(len(idx)),
+                "clusters": ",".join(str(int(cluster_ids[i])) for i in idx),
+                "avg_shift_norm": float(avg_shift),
+                "post_divergence_norm": float(div),
+                "noise_to_signal": float(div / max(avg_shift, 1e-9)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def run_qc_checks(
     Z_prior: np.ndarray,
     Z_post: np.ndarray,
@@ -100,6 +174,8 @@ def run_qc_checks(
     collapse_threshold: float = 0.1,
     blowup_threshold: float = 1.5,
     bimodality_threshold: float = 0.3,
+    parameter_ranges: dict[str, tuple[float, float]] | None = None,
+    model_ids: np.ndarray | None = None,
 ) -> QCReport:
     """Run the full QC sweep on a pair of prior / posterior ensembles."""
     N, n_z = Z_prior.shape
@@ -150,7 +226,37 @@ def run_qc_checks(
             )
     centroid_df = pd.DataFrame(centroid_rows)
 
+    physical_bounds = _check_physical_bounds(Z_post, theta_names, parameter_ranges)
+    duplicates_summary = _summarise_duplicate_models(
+        model_ids, cluster_ids, Z_prior, Z_post
+    ) if model_ids is not None else pd.DataFrame()
+
     msgs: list[tuple[Level, str]] = []
+    if not physical_bounds.empty:
+        oob_total = int(physical_bounds["n_out_of_bounds"].sum())
+        if oob_total > 0:
+            bad = physical_bounds[
+                physical_bounds["n_out_of_bounds"] > 0
+            ]
+            offenders = ", ".join(
+                f"{r.component}({int(r.n_out_of_bounds)})"
+                for r in bad.itertuples(index=False)
+            )
+            msgs.append(
+                ("WARNING",
+                 f"out-of-prior-bounds: {oob_total} θ_post entries beyond "
+                 f"the prior support. Offending components: {offenders}. "
+                 f"Consider --clip-to-prior or transforming bounded parameters.")
+            )
+    if not duplicates_summary.empty:
+        n_dups = len(duplicates_summary)
+        med_ns = float(duplicates_summary["noise_to_signal"].median())
+        msgs.append(
+            ("INFO",
+             f"{n_dups} model_ids appear in multiple cluster rows "
+             f"(duplicate ensemble members). median noise/signal of their "
+             f"θ_post divergence = {med_ns:.3f}.")
+        )
     if n_collapse > 0:
         bad = spread[ratio < collapse_threshold]["component"].tolist()
         msgs.append(
@@ -190,6 +296,8 @@ def run_qc_checks(
         mahalanobis_migration=maha,
         bimodality_score=bc,
         cluster_centroid_shift=centroid_df,
+        physical_bounds_violations=physical_bounds,
+        duplicate_models_summary=duplicates_summary,
         messages=msgs,
     )
 
@@ -216,6 +324,16 @@ def write_qc_report_csvs(report: QCReport, out_dir) -> dict[str, "str"]:
     p_cent = out / "cluster_centroid_shift.csv"
     report.cluster_centroid_shift.to_csv(p_cent, index=False, encoding="utf-8")
     paths["cluster_centroid_shift"] = str(p_cent)
+
+    if not report.physical_bounds_violations.empty:
+        p_bounds = out / "physical_bounds_violations.csv"
+        report.physical_bounds_violations.to_csv(p_bounds, index=False, encoding="utf-8")
+        paths["physical_bounds_violations"] = str(p_bounds)
+
+    if not report.duplicate_models_summary.empty:
+        p_dups = out / "duplicate_models.csv"
+        report.duplicate_models_summary.to_csv(p_dups, index=False, encoding="utf-8")
+        paths["duplicate_models"] = str(p_dups)
 
     p_summary = out / "rank_check.json"
     import json
