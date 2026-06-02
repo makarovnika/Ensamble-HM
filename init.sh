@@ -50,6 +50,14 @@ fi
 echo "==> Syncing dependencies"
 "${INSTALL_CMD[@]}"
 
+# Install the tracker-discipline pre-commit hook on every init so a fresh
+# clone gets it before any src/ commit can slip through (mitigates the
+# session-005 / session-013 drift pattern). Idempotent.
+if [ -f "scripts/install_hooks.sh" ] && [ -d ".git" ]; then
+  echo "==> Installing git pre-commit hook (tracker discipline)"
+  bash scripts/install_hooks.sh
+fi
+
 echo "==> Running baseline verification"
 "${VERIFY_CMD[@]}"
 

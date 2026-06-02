@@ -205,7 +205,7 @@
 
 Разделы:
 
-1. Project summary + evaluation_mode (`forecast_no_truth_ensemble_comparison`).
+1. Project summary + evaluation_mode (`no_truth_baseline_only`).
 2. **Pipeline diagram** (`fig01_pipeline.png`).
 3. **Phase 1**: ссылка на `qc_report.html` + три ключевых KPI (collapse=0, blowup=0, rank=9).
 4. **Phase 2**: топ-10 моделей из `mahalanobis_ranking.csv`, proxy validation сводка, ссылка на `qc_proxy_validation_scatter.png`.

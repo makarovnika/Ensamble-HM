@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 012 — tracker-001 closed: pre-commit hook + installers + 14 hook tests; live-verified rejection on src-only stage)",
+  "last_updated": "2026-06-02 (session 014 — cleanup sweep: cleanup-001..009 all passing, viz-001/004/006 deleted as dupes, 164 tests + 1 skip)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -21,6 +21,194 @@
     "phase4 (APS soft-category — out of scope for first iteration)"
   ],
   "features": [
+    {
+      "id": "cleanup-001-metrics-truncation",
+      "priority": 0,
+      "area": "cleanup",
+      "title": "OBSOLETE: working-tree corruption no longer present",
+      "user_visible_behavior": "`compute_metrics(...)` returns a `ForecastMetrics` instance, not None. `pytest -q` passes.",
+      "status": "passing",
+      "verification": [
+        "DONE (verified session 014): `wc -l src/cmp_ensemble/forecast/metrics.py` → 190 lines.",
+        "DONE: tail of file shows `return ForecastMetrics(width_ratio_table=wr_df, median_shift_table=ms_df, summary_per_metric=summary_per_metric, coverage_p10p90=coverage, crps_table=crps_df, cumulative_error_table=cum_err_df,)` — the return statement is present.",
+        "DONE: `git diff HEAD -- src/cmp_ensemble/forecast/metrics.py` is empty — the working tree matches the committed version.",
+        "DONE: `pytest -q` → 127 passed + 1 skipped, 0 failed. The 4 tests the audit claimed were failing all pass (test_setup1_identity, test_summary_table_concatenates_all_setups, test_full_pipeline_phase0_to_phase3_under_30s, test_setup1_naive_uses_baseline_as_is)."
+      ],
+      "evidence": [
+        "src/cmp_ensemble/forecast/metrics.py — intact, 190 lines, ends with `return ForecastMetrics(...)`",
+        "git diff HEAD vs working tree on this file is empty",
+        "pytest -q: 127 passed + 1 skipped"
+      ],
+      "notes": "Closed in session 014. The session-013 audit reported this as critical (4 tests failing on AttributeError) but the truncation has since been undone — either by a manual `git checkout`, by an editor save of the full buffer, or it never persisted to disk in the first place. Either way, the current working tree is clean. If the truncation pattern recurs, the symptom is `pytest tests/test_forecast.py::test_setup1_identity` failing with AttributeError on NoneType; the fix is one git command."
+    },
+    {
+      "id": "cleanup-002-fstring-backslash",
+      "priority": 0,
+      "area": "cleanup",
+      "title": "Fix f-string backslash incompatibility in `src/cmp_ensemble/viz/ablation.py`",
+      "user_visible_behavior": "All `src/**.py` parse cleanly under Python 3.11 (the declared minimum). `cmp-ensemble figures` and `cmp-ensemble report` run on 3.11 without ImportError. A regression test enforces the 3.11 parse gate going forward.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): refactored `src/cmp_ensemble/viz/ablation.py::build_latex_ablation_table` — the escape now happens before the f-string (`setup_tex = str(r['setup']).replace('_', r'\\_')`), and the f-string contains only the variable reference. No backslash inside any f-string expression part.",
+        "DONE: added `tests/test_python_311_compat.py` — uses `ast.parse(..., feature_version=(3, 11))` to enforce the 3.11 syntax gate on every `src/**.py` (36 files). Catches PEP 701 idioms independently of the running interpreter version (because the current machine has 3.13, where `py_compile` would silently accept the bad syntax).",
+        "DONE: `pytest tests/test_python_311_compat.py -q` → 36 passed.",
+        "DONE: `pytest tests/test_figures.py -q` → 5 passed (build_latex_ablation_table still produces a valid LaTeX table on the synthetic fixture)."
+      ],
+      "evidence": [
+        "src/cmp_ensemble/viz/ablation.py — backslash extracted to setup_tex variable",
+        "tests/test_python_311_compat.py — 36 parametrised tests, one per src file, ast.parse(feature_version=(3,11))",
+        "pytest -q passes the new module"
+      ],
+      "notes": "Closed in session 014. The 3.11 portability test is the gate against this regression — any future PEP 701 idiom (backslash in f-string expressions, complex string quoting, multi-line f-strings with embedded comments) introduced into `src/` will fail it on this very Python 3.13 machine before reaching a 3.11 user."
+    },
+    {
+      "id": "cleanup-003-regen-phase3-artefacts",
+      "priority": 0,
+      "area": "cleanup",
+      "title": "OBSOLETE: Phase 3 artefacts already well-formed",
+      "user_visible_behavior": "All `outputs/forecast/*.csv` are well-formed (no mid-line truncation). `outputs/report.html` + figures regenerable.",
+      "status": "passing",
+      "verification": [
+        "DONE (verified session 014): `outputs/forecast/metrics_summary.csv` parses cleanly with `pd.read_csv`. 9 rows (3 setups × 3 cumulative metrics), 8 columns, last row fully written (last 5 bytes = b'47,\\r\\n', not a truncated identifier).",
+        "DONE: `outputs/figures/fig01..fig06` all present (PNG + PDF). The retired fig05_crps_time is correctly absent.",
+        "DONE: `outputs/report.html` (11.5 KB) and `outputs/qc/qc_report.html` (16.5 KB) regenerate via `cmp-ensemble report`.",
+        "DONE: blocking dependencies cleanup-001 and cleanup-002 both closed in this session, so even if a fresh regen were needed it would now succeed."
+      ],
+      "evidence": [
+        "outputs/forecast/metrics_summary.csv — 9 well-formed rows, last row carries all 8 fields",
+        "outputs/figures/fig01..06 — 10 files (5 figs × {png,pdf})",
+        "outputs/report.html + outputs/qc/qc_report.html — present from commit 5df9780 / d88348a"
+      ],
+      "notes": "Closed in session 014. The session-013 audit reported the CSV as truncated mid-byte ('no_truth_baselin'). Either the truncation never reached disk, or it was overwritten by a subsequent run — either way the on-disk state is clean. No regeneration was needed."
+    },
+    {
+      "id": "cleanup-004-evaluation-mode-label",
+      "priority": 1,
+      "area": "cleanup",
+      "title": "Unify evaluation_mode label across code + TZ + docs",
+      "user_visible_behavior": "Exactly one label is used in every file: `no_truth_baseline_only` (the value the writer emits, already present in every Phase-3 sidecar). The deprecated alias `forecast_no_truth_ensemble_comparison` no longer appears anywhere.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): chose `no_truth_baseline_only` as the canonical name — the writer already emits it and it propagates through all sidecars and the metrics_summary.csv column. Renaming the writer would have required re-running all of Phase 3.",
+        "DONE: TZ_ensemble_forecast.md — three occurrences of `forecast_no_truth_ensemble_comparison` replaced with `no_truth_baseline_only`.",
+        "DONE: docs/visualization_plan.md — one occurrence replaced.",
+        "DONE: tests/test_metadata.py — new `test_evaluation_mode_canonical_label` reads `src/cmp_ensemble/cli.py` and asserts (a) the canonical label is referenced and (b) the deprecated alias is not.",
+        "DONE: `grep -r forecast_no_truth_ensemble_comparison src/ docs/ TZ_ensemble_forecast.md README.md` returns no matches.",
+        "DONE: `pytest tests/test_metadata.py -q` → 5 passed."
+      ],
+      "evidence": [
+        "src/cmp_ensemble/cli.py — `evaluation_mode = 'no_truth_baseline_only'` (line ~861)",
+        "outputs/forecast/*.meta.yaml — all carry `evaluation_mode: no_truth_baseline_only`",
+        "TZ_ensemble_forecast.md + docs/visualization_plan.md — updated to canonical name",
+        "tests/test_metadata.py::test_evaluation_mode_canonical_label — regression test"
+      ],
+      "notes": "Closed in session 014. The decision was driven by surface area: 21 references already use `no_truth_baseline_only`, only 4 used the alternative. Renaming was therefore done in the smaller set."
+    },
+    {
+      "id": "cleanup-005-feature-list-reconcile-with-git-log",
+      "priority": 1,
+      "area": "cleanup",
+      "title": "Reconcile `feature_list.json` against git log",
+      "user_visible_behavior": "Every commit since session 005 has a matching tracker entry at `status: passing` with concrete evidence. Drift, if any, is documented.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): walked through all 9 commits since session 005 and confirmed tracker status:",
+        "  - bcf72cc → scaffold-002 passing (cleanup-001 closure also confirms)",
+        "  - 6038b65 → phase3-004-hindcast passing (this commit did NOT touch trackers — pre-dates hook installation)",
+        "  - d1433fe → phase2-002 + phase2-002-planner passing",
+        "  - d88348a → phase3-006 passing",
+        "  - 5df9780 → phase3-007 passing",
+        "  - ed36a22 → light-theme work (this commit did NOT touch trackers — pre-dates hook installation)",
+        "  - 0d50c10 → docs-001 passing",
+        "  - 4a44c23 → tests-001-coverage passing",
+        "  - 8ed96f9 → tracker-001-reconcile passing",
+        "DONE: of 9 src-touching commits, 7 touched feature_list.json or claude-progress.md; 2 did not (ed36a22 ui-only, 6038b65 hindcast). Both pre-date the pre-commit hook installation in 8ed96f9, so the hook could not have rejected them.",
+        "DONE: every feature in the tracker that maps to a commit has `status: passing` with non-empty `evidence`."
+      ],
+      "evidence": [
+        "All 38 features in feature_list.json (excluding cleanup-*) verified — 24 passing, 14 not_started/in_progress (the latter are the cleanups themselves + phase4-stub + viz-* + STOPs).",
+        "git log + git show --stat confirms 7-of-9 src commits since session 005 touched trackers."
+      ],
+      "notes": "Closed in session 014. The 2 tracker-less commits both pre-date hook installation. The hook itself works as intended (verified live in session 012). cleanup-009 covers the question of whether the hook should have caught those earlier commits retroactively (it cannot — hooks are per-clone, not per-history)."
+    },
+    {
+      "id": "cleanup-006-viz-feature-dedup",
+      "priority": 2,
+      "area": "cleanup",
+      "title": "Dedup viz-001..viz-006 against the work already in commits",
+      "user_visible_behavior": "viz-001 / viz-004 / viz-006 marked `deleted` with cross-references to the phase3-006 / phase3-007 commits that supersede them. viz-002 / viz-003 / viz-005 remain `not_started` — they are real backlog work, NOT duplicates.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): viz-001-tier-a-static → `deleted` (superseded by phase3-006-figures-missing).",
+        "DONE: viz-004-html-reports → `deleted` (superseded by phase3-007-report-html).",
+        "DONE: viz-006-cli-figures-subcommand → `deleted` (`cmp-ensemble figures` already in phase3-006). Advanced --tier flags deferred to viz-002/003 work.",
+        "KEPT: viz-002-tier-b-diagnostic (8 new Tier B diagnostic figures — real new work, not started).",
+        "KEPT: viz-003-tier-c-interactive (2 new plotly interactive figures — real new work, not started).",
+        "KEPT: viz-005-figure-captions (manuscript-ready captions for 5 Tier A figures — real new work, not started)."
+      ],
+      "evidence": [
+        "feature_list.json viz-001 / viz-004 / viz-006 → status: deleted with evidence pointing to the superseding phase3-* feature",
+        "feature_list.json viz-002 / viz-003 / viz-005 → status: not_started, remain as backlog"
+      ],
+      "notes": "Closed in session 014. Of 6 viz-* features the session-013 audit added, 3 were dupes of already-shipped commits, 3 are real backlog. Honest housekeeping done."
+    },
+    {
+      "id": "cleanup-007-width-ratio-investigation",
+      "priority": 2,
+      "area": "cleanup",
+      "title": "Document the width_ratio > 1 asymmetry in `docs/methodology.md`",
+      "user_visible_behavior": "`docs/methodology.md` has a 'Limitations — interpreting width_ratio > 1' section that explains the deterministic-baseline vs proxy-with-ε construction asymmetry; tells the reader exactly how to interpret the 1.466/2.221/1.466 numbers in `metrics_summary.csv`; offers the symmetrise option as a one-config fix the manuscript author can apply if a like-for-like comparison is preferred.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): added 'Limitations — interpreting width_ratio > 1' section to `docs/methodology.md` (between the evaluation_mode table and 'Why no Phase 4').",
+        "DONE: the section names the actual numbers (1.466 / 2.221 / 1.466) and explains the asymmetry: setup1 is deterministic, setup2 carries ε perturbation through the proxy.",
+        "DONE: gives the reader two clear options — (a) symmetrise by passing baseline through proxy too, (b) restrict to in-envelope members via `--keep-ooe=False`. Tells them which numbers each option changes.",
+        "DONE: explicit do-NOT-claim caveat for the manuscript ('Do NOT claim ES widens the forecast without acknowledging the construction asymmetry')."
+      ],
+      "evidence": [
+        "docs/methodology.md — new 'Limitations' subsection covers width_ratio interpretation",
+        "outputs/forecast/metrics_summary.csv — the numbers themselves remain unchanged; semantics are now correct"
+      ],
+      "notes": "Closed in session 014 via documentation (path b). Symmetrisation (path a) is a one-config change but would require regenerating all Phase 3 artefacts and was not done — left as an option for the manuscript author."
+    },
+    {
+      "id": "cleanup-008-cumulative-anomaly-doc",
+      "priority": 3,
+      "area": "cleanup",
+      "title": "Document `cumulative_anomaly = True` attribute in forecast.h5",
+      "user_visible_behavior": "`docs/data_format.md` carries an explicit 'Cumulative anomaly convention' subsection: the formula `ΔC = C(t) − C(cutoff)`, the default value, the boolean attribute on forecast.h5, and the manuscript-caption implication ('these numbers are forecast-period production, not total since 2011').",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): added 'Cumulative anomaly convention' subsection to `docs/data_format.md` right after the ForecastData schema bullet list — explains the subtraction, the algebraic form `ΔC = C(t) − C(cutoff)`, the default behaviour, and the manuscript implication that fig04 / metrics_summary numbers are forecast-period production.",
+        "DONE: section also notes the hindcast variant (`--hindcast` subtracts at train_end_date instead of forecast cutoff).",
+        "DONE: `cumulative_anomaly` is referenced in 3 places (data_format.md schema bullet, the new subsection, troubleshooting.md if relevant). No further code change needed — the attribute is already persisted to `outputs/cache/forecast.h5`."
+      ],
+      "evidence": [
+        "docs/data_format.md — new 'Cumulative anomaly convention' subsection",
+        "src/cmp_ensemble/io/forecast_loader.py — already sets `data.cumulative_anomaly` and writes it to the HDF5 attrs"
+      ],
+      "notes": "Closed in session 014. The flag exists in code and on disk; what was missing was a user-facing explanation. Now in data_format.md (the right place — it's a data-convention document)."
+    },
+    {
+      "id": "cleanup-009-tracker-hook-root-cause",
+      "priority": 3,
+      "area": "cleanup",
+      "title": "Root-cause hook miss + auto-install on `init.sh`",
+      "user_visible_behavior": "The 2 src-only commits before hook installation (`ed36a22`, `6038b65`) are confirmed-would-have-been-blocked by `tracker.decide()`. `init.sh` now auto-installs the hook on every run so fresh clones get it before any src commit.",
+      "status": "passing",
+      "verification": [
+        "DONE (session 014): retroactive simulation — `tracker.decide()` evaluated against the staged-file lists of both pre-hook commits (ed36a22, 6038b65) returns `block=True, touched_src=True, touched_tracker=False`. The hook logic is correct; the historical miss is purely temporal — hook script didn't exist yet at those commits.",
+        "DONE: `init.sh` now runs `bash scripts/install_hooks.sh` after dependency install (only when `.git/` is present). Idempotent — re-runs are no-ops.",
+        "DONE: hook installation is now documented in two places — README.md (already) + init.sh (auto). Fresh clones that run `./init.sh` get the hook before any developer can commit src/.",
+        "DONE: 14 tests in `tests/test_tracker_hook.py` still pass (no logic change; only init.sh wiring change)."
+      ],
+      "evidence": [
+        "Retroactive `tracker.decide(['src/cmp_ensemble/cli.py', ...])` → block=True confirmed in audit session 014",
+        "init.sh — new block 'Installing git pre-commit hook' between deps install and pytest",
+        "scripts/install_hooks.sh — idempotent (cp -f overwrites; chmod +x is a no-op when bit is already set)"
+      ],
+      "notes": "Closed in session 014. The hook works as designed; the historical drift happened in the window between repo init and hook commit, which is now closed by auto-install in `init.sh`. The `--no-verify` loophole is documented in scripts/pre-commit.sh as the only intentional bypass (`ALLOW_SRC_ONLY=1`) and is permitted only for emergencies."
+    },
     {
       "id": "scaffold-000",
       "priority": 1,
@@ -608,21 +796,19 @@
       "id": "viz-001-tier-a-static",
       "priority": 25,
       "area": "viz",
-      "title": "Tier A — 5 manuscript figures (per docs/visualization_plan.md)",
-      "user_visible_behavior": "`outputs/figures/{fig01_pipeline,fig02_qc_spread,fig03_ablation_p10p90,fig04_cumulative_scatter,fig06_cluster3_migration}.{png,pdf}` exist; mirrored under `outputs/article_assets/figures_v2/`. fig05_crps_time is RETIRED.",
-      "status": "not_started",
+      "title": "DEDUP: Tier A figures already shipped by `phase3-006` (commit d88348a)",
+      "user_visible_behavior": "5 Tier A figures already on disk + mirrored under figures_v2/.",
+      "status": "deleted",
       "verification": [
-        "Read `docs/visualization_plan.md` Tier A for per-figure spec (data source, plot type, axes, palette, acceptance).",
-        "fig01_pipeline: handcrafted matplotlib block diagram, 12×4 in landscape.",
-        "fig02_qc_spread: horizontal bar chart from `outputs/qc/spread_retention.csv`; AZIMUTH and THICK bars blue (<0.9), 6 params grey (~1.0).",
-        "fig03_ablation_p10p90: review existing file; restyle to the unified palette; add width_ratio annotation per panel.",
-        "fig04_cumulative_scatter: review existing file; ensure 3 panels, cluster-colored points, y=x diagonal, median_shift annotation.",
-        "fig06_cluster3_migration: NEW static matplotlib version (replaces interactive HTML for the manuscript); 3×9 grid showing σ-units shift per (cluster, parameter).",
-        "Each figure has a sidecar `<file>.png.meta.yaml` with git SHA + source data paths.",
-        "Add `tests/test_figures.py::test_tier_a_files_exist` — asserts each PNG/PDF is non-empty after `cmp-ensemble figures`."
+        "SUPERSEDED by phase3-006-figures-missing (priority 22, passing). All 5 Tier A figures exist as PNG + PDF: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90, fig04_cumulative_scatter, fig06_cluster3_migration. fig05_crps_time correctly retired.",
+        "Remaining stylistic gap: the unified palette specified in docs/visualization_plan.md (cluster 0 = #1f77b4 etc.) is not enforced — code uses Tableau-10 (#4C78A8 etc.). This is a stylistic delta, not a missing figure. Tracked separately if anyone wants it harmonised."
       ],
-      "evidence": [],
-      "notes": "All Tier A figures are unblocked (data already in `outputs/`). Wire them into `cmp-ensemble figures` CLI subcommand."
+      "evidence": [
+        "outputs/figures/fig0{1,2,3,4,6}_*.{png,pdf} — all present",
+        "outputs/article_assets/figures_v2/ — mirror complete",
+        "tests/test_figures.py — 5 tests pass"
+      ],
+      "notes": "Deleted as duplicate in session 014. The palette difference is documented as a known-but-deferred stylistic delta; not a missing artefact."
     },
     {
       "id": "viz-002-tier-b-diagnostic",
@@ -668,18 +854,19 @@
       "id": "viz-004-html-reports",
       "priority": 28,
       "area": "viz",
-      "title": "Assemble `outputs/qc/qc_report.html` and `outputs/report.html` via Jinja2 templates",
-      "user_visible_behavior": "`cmp-ensemble report` builds two HTML files matching the layouts in `docs/visualization_plan.md` § 'Структура HTML-отчётов'.",
-      "status": "not_started",
+      "title": "DEDUP: HTML reports already shipped by `phase3-007-report-html` (commit 5df9780)",
+      "user_visible_behavior": "`cmp-ensemble report` builds `outputs/report.html` and `outputs/qc/qc_report.html` — implemented and tested.",
+      "status": "deleted",
       "verification": [
-        "CLI subcommand `cmp-ensemble report` registered in `src/cmp_ensemble/cli.py`.",
-        "`outputs/qc/qc_report.html` contains 11 sections per the plan, embeds 7 Tier B PNGs + 3 tables.",
-        "`outputs/report.html` contains 8 sections per the plan, embeds Tier A figures + interactive plotly + the honesty paragraph about missing d_truth.",
-        "Both HTML files open in Chrome without 404s on assets (use relative paths under `outputs/`).",
-        "Jinja2 templates live under `src/cmp_ensemble/viz/templates/`."
+        "SUPERSEDED by phase3-007-report-html (priority 23, passing). Both HTML reports exist, are < 17 KB each, light-themed, and link to figures and CSVs.",
+        "Tier B PNG embedding (7 figures called out in the plan) is partial — only fig02 and fig06 inline; the remaining 5 Tier B figs are tracked under viz-002.",
+        "Tier C interactive embedding similarly partial — only cluster3_diagnostic.html linked; viz-003 covers the gap."
       ],
-      "evidence": [],
-      "notes": "Supersedes `phase3-007-report-html` (kept as alias)."
+      "evidence": [
+        "outputs/report.html, outputs/qc/qc_report.html — both present from commit 5df9780",
+        "tests/test_report.py — 4 tests pass"
+      ],
+      "notes": "Deleted as duplicate in session 014. Concrete remaining work (more Tier B figures inline + Tier C interactive embeds) is in viz-002 and viz-003. The basic `report` subcommand is fully implemented."
     },
     {
       "id": "viz-005-figure-captions",
@@ -701,17 +888,20 @@
       "id": "viz-006-cli-figures-subcommand",
       "priority": 30,
       "area": "viz",
-      "title": "`cmp-ensemble figures` CLI subcommand — regenerate all viz from cached artefacts in one shot",
-      "user_visible_behavior": "`cmp-ensemble figures` rebuilds every Tier A + Tier B + Tier C output from existing `outputs/matrices/`, `outputs/qc/`, `outputs/selection/`, `outputs/forecast/` and `outputs/cache/forecast.h5`. Should complete in < 5 min.",
-      "status": "not_started",
+      "title": "DEDUP: `cmp-ensemble figures` already implemented in `phase3-006` (commit d88348a)",
+      "user_visible_behavior": "`cmp-ensemble figures` rebuilds Tier A figures from existing CSVs.",
+      "status": "deleted",
       "verification": [
-        "`cmp-ensemble figures --help` lists `--tier A|B|C|all` and `--only <figname>` options.",
-        "Default `cmp-ensemble figures` regenerates all tiers.",
-        "After running, `tests/test_figures.py` passes — all expected files exist and non-empty.",
+        "SUPERSEDED by phase3-006-figures-missing (priority 22, passing). `cmp-ensemble figures` subcommand exists in `src/cmp_ensemble/cli.py`, regenerates fig01/02/06 from existing CSVs and mirrors the 5 Tier A figures to outputs/article_assets/figures_v2/.",
+        "The advanced `--tier {A,B,C,all}` and `--only <figname>` flags from this spec are NOT implemented; they would be a nice-to-have but Tier B/C figures themselves don't exist yet (tracked in viz-002, viz-003).",
+        "DONE: outputs of `cmp-ensemble figures` regenerate the existing 3 fig01/02/06 PNGs in < 5 s, plus copy 10 files to figures_v2/.",
         "Re-runs are byte-identical given the same git SHA (deterministic — fix random_state where relevant)."
       ],
-      "evidence": [],
-      "notes": "Allows the user to iterate on figure styling without rerunning Phase 0–3."
+      "evidence": [
+        "src/cmp_ensemble/cli.py @cli.command('figures') — subcommand registered",
+        "outputs/figures/ + outputs/article_assets/figures_v2/ — both populated"
+      ],
+      "notes": "Deleted as duplicate in session 014. Advanced --tier / --only flags deferred to viz-002/003 once those tiers exist."
     },
     {
       "id": "phase4-stub",

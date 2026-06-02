@@ -173,6 +173,42 @@ strategy because the val slice is still drawn from `Исторические з�
 the adaptation already saw. We keep the hindcast flag as a diagnostic and label outputs honestly
 via the `evaluation_mode` stamp.
 
+## Limitations — interpreting `width_ratio > 1` in `metrics_summary.csv`
+
+The Phase 3 default forecast run reports (real-data, 2019-2024 forecast period):
+
+| Setup | mean width_ratio (oil) | mean width_ratio (water) | mean width_ratio (gas) |
+|---|---|---|---|
+| `setup1_naive` | 1.000 (identity) | 1.000 | 1.000 |
+| `setup2_localized` | **1.466** | **2.221** | **1.466** |
+| `setup3_full` | 1.466 (≡ setup2) | 2.221 | 1.466 |
+
+A naive reading is "setup2 makes the forecast worse — the spread widens". This is **not** what
+the numbers actually say. The asymmetry comes from how the two ensembles are constructed:
+
+* **Baseline (`setup1_naive`)** is the raw collection of 123 deterministic tNavigator forecast
+  runs from `decoded_results.xlsx`. Each model has one trajectory; there is no perturbation,
+  no proxy, no ES re-projection.
+* **`setup2_localized`** maps each model's ES-updated `θ_post` (149 values, including the 26
+  duplicates) through the per-cluster linear proxy. The proxy is a function of θ, so the spread
+  of `d_forecast_post` reflects the spread of `θ_post` — which is *deliberately* wider than
+  `θ_prior` by the ε perturbation that the ES algorithm adds.
+
+In other words, the comparison is between a deterministic baseline (zero ε noise) and a
+proxy-projected ensemble that carries ES perturbation variance. **`width_ratio > 1` is therefore
+expected and is not by itself evidence the method is failing.** The honest interpretation:
+
+* If you want a like-for-like comparison, pass the baseline through the same proxy pipeline
+  (`d̂_baseline = proxy(θ_prior)`) and recompute `width_ratio`. This is straightforward but was
+  not done in the present run — it would change every Phase 3 number on disk.
+* If you want to claim ES tightens forecast uncertainty in a specific sense, restrict to
+  `--keep-ooe=False` (drop the 138 extrapolating members) — the 11 in-envelope members show
+  width_ratio < 1 for oil (≈0.86, see `outputs/phase1_variants/` for a related side-by-side).
+
+For the manuscript, present `width_ratio` together with the construction asymmetry caveat above.
+Do NOT claim "ES widens the forecast" without acknowledging that the baseline carries no
+perturbation while setup2 does.
+
 ## Why no Phase 4
 
 `Phase 4` (APS soft-category, EOH Ch. 8) is documented in ТЗ §6 but explicitly out of scope per

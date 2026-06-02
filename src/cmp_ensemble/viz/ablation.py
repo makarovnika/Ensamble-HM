@@ -134,8 +134,11 @@ def build_latex_ablation_table(summary_df, out_path: Path) -> Path:
     for _, r in summary_df.iterrows():
         cov = r["coverage_p10p90"]
         cov_s = f"{cov:.3f}" if not (cov != cov) else "--"   # NaN check
+        # Escape underscores for LaTeX outside the f-string — backslashes
+        # inside f-string expressions are illegal until Python 3.12 (PEP 701).
+        setup_tex = str(r["setup"]).replace("_", r"\_")
         rows.append(
-            f"{r['setup'].replace('_', '\\_')} & {r['phase']} & {int(r['M_members'])} & "
+            f"{setup_tex} & {r['phase']} & {int(r['M_members'])} & "
             f"{r['mean_width_ratio']:.3f} & {r['mean_median_shift']:.3e} & {cov_s} \\\\"
         )
     rows.append(r"\bottomrule")

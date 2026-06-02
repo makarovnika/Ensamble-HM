@@ -123,8 +123,32 @@ Returned by `load_tnav_forecast`. Forecast-period analogue of `EnsembleData`.
 - `cum_index`, `rate_index` over the forecast period only
 - `forecast_time_steps: (70,) datetime64[ns]` (2019-01-01 → 2024-10-01)
 - `history_cutoff: datetime` — first day of the forecast window
-- `cumulative_anomaly: bool` — when `True` (default), each cumulative entry is offset by the
-  at-cutoff value, so it represents production added in the forecast period only (not since 2011)
+- `cumulative_anomaly: bool` — see "Cumulative anomaly convention" below.
+
+### Cumulative anomaly convention
+
+The `Накопл. *` columns in `decoded_results.xlsx` are monotonically increasing functions of
+time — at the year-end anchor of forecast year Y they record **total** production from
+2011-01-01 to that date, not just the production added during the forecast period.
+
+For the linear proxy and Phase 3 metrics we want the *forecast-period* increment, not the
+running total. Algebraically: if `C(t)` is the cumulative column at time `t`, the forecast-
+period anomaly at year-end is
+
+```
+ΔC(t_year_end) = C(t_year_end) − C(history_cutoff)         for each (metric, well, year)
+```
+
+`load_tnav_forecast(..., cumulative_anomaly=True)` (the **default**) applies this subtraction
+inline: every entry of `d_forecast_cum` is the forecast-period increment, not the cumulative
+since 2011. The boolean attribute is stored on `outputs/cache/forecast.h5` so downstream
+readers can tell which convention was used. With `cumulative_anomaly=False` the column carries
+the raw total since 2011 and the anomaly must be reconstructed externally.
+
+**Consequence for the article**: when fig04 / `metrics_summary.csv` discuss "cumulative
+oil/water/gas", the numbers are **forecast-period production** (2019-2024), not total ever.
+Captions should say so explicitly. The hindcast mode (`--hindcast`) does the same subtraction
+at its own cutoff (`history.train_end_date` rather than `forecast.history_cutoff`).
 
 ## Year-end aggregation cadence
 

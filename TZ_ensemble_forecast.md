@@ -4,6 +4,31 @@
 
 ---
 
+## 0. Журнал ревизий ТЗ (что изменилось после аудита данных)
+
+**Ревизия v2 — 2026-06-02 (сессии 002–005 + addendum).** Изначальный ТЗ был написан под гипотетическую файловую структуру `data/ensemble_150/...`. После реального осмотра входных данных и подтверждения от пользователя зафиксированы следующие правки. Они **переопределяют** оригинальные формулировки в случае конфликта.
+
+| Что изменилось | Было (v1) | Стало (v2) | Где |
+|---|---|---|---|
+| Источник данных | дерево `data/ensemble_150/...` с CSV | 4 Excel-файла в корне репо | §3 |
+| Число параметров n_θ | 12 (workflow_params) | **9** (θ_adapt: THICK, MAJ_R, AZIMUTH, NUMBER_CHANNELS, CHANNELS_WIDTH, LEN, AMPLITUDE, RELATIVE, PROP) | §3 |
+| Размер ансамбля N | 150 | **149** (одна модель `51-1_1-173` с обрезанной таймлинией пропущена) | §3 |
+| Forecast-симуляции | опционально, ожидались | **123 из 150 досчитаны** (2019-01 → 2024-10, 70 месяцев); 27 отвалились "pressure depletion" | §3 |
+| Скважины | 17 продюсеров + 6 инжекторов | **16 продюсеров + 6 инжекторов** (1 продюсер из ТЗ §3 в данных отсутствует) + 1 dummy `B` фильтруется | §3 |
+| workflow_params (controls) | 150 × 12 | **отсутствуют** → setup3 вырождается в setup2 с warning | §3, §6 Task 3.1 |
+| d_truth (правда на forecast-период) | опционально через `truth/` | **принципиально недоступен** — реальные замеры обрываются 2018-12-13 | §3, §6 Task 3.3 |
+| Train/val split (Task 3.4) | fallback при отсутствии truth | **снят с повестки** — d_truth на val-слайсе всё равно не существует, hindcast ничего не даст | §6 Task 3.4 |
+| Метрики coverage / CRPS / cumulative_error | обязательны | **формально неприменимы** для этого датасета (нет d_truth). Код остаётся, активируется автоматически если truth когда-либо появится | §6 Task 3.3, §11 |
+| Acceptance ablation | "coverage_2 ≥ coverage_1, CRPS_2 ≤ CRPS_1" | **сравнение ансамблей между собой** через width_ratio и median_shift; правильность не оценивается | §6 acceptance Phase 3, §11 |
+| Число фигур | 6 (fig01..fig06) | **5** — fig05_crps_time retired (CRPS не считается) | §4 |
+| Геологические файлы (`geology/`) | для Фазы 4 | отсутствуют — но Фаза 4 и так out of scope | §3, §12 |
+| BHP в истории | плотное покрытие | **разрежено**: ~10% строк ненулевые. C_dd для BHP-слотов инфлирован до σ=1e6 | §3 |
+| Линкинг моделей | model_id ↔ путь | `round(SEED)` из `models_near_adapted_centroids.xlsx` = суффикс листа в `Показатели динамики.xlsx`. Проверено 150/150 | §3 |
+
+**Что НЕ изменилось:** методология ES + локализация + subspace SVD (Фаза 1), Mahalanobis + linear proxy (Фаза 2), три setup'а в Фазе 3 как идея, стек, CLI, дисциплина артефактов.
+
+---
+
 ## 1. Цель и не-цель
 
 **Цель**: реализовать Python-пайплайн, который:
@@ -30,39 +55,64 @@
 
 ---
 
-## 3. Входные данные (предполагается, что есть на диске)
+## 3. Входные данные (реальная структура, как лежит в репо)
 
 ```
-data/
-├── ensemble_150/
-│   ├── manifest.csv                 # 150 строк: model_id, cluster_id, source_seed, sim_path
-│   ├── theta_adapt.csv              # 150 × n_θ, параметры адаптации (центроидные, дублируются)
-│   ├── workflow_params.csv          # 150 × 12, исходные параметры воркфлоу
-│   └── tnav_outputs/
-│       └── <model_id>/              # 150 папок
-│           ├── production.csv       # дебиты/BHP во времени, помесячно
-│           ├── cumulative.csv       # накопленная добыча на конец каждого года
-│           └── metadata.yaml        # имена скважин, единицы, тайм-степы
+F:\СМП\Статья 2.0\Ensamble HM\
+├── models_near_adapted_centroids.xlsx     # 3 листа (по кластеру) × 50 моделей
+│                                            # Колонки: MODEL, SEED, и 9 θ-параметров
+│                                            # (THICK, MAJ_R, AZIMUTH, NUMBER_CHANNELS,
+│                                            #  CHANNELS_WIDTH, LEN, AMPLITUDE, RELATIVE, PROP)
+│                                            # Первая строка каждого листа —
+│                                            # "Адаптированный центроид →" (reference θ)
 │
-├── observations/
-│   ├── historical_rates.csv         # 8 лет × ежемесячно, oil/water/gas/BHP по 17 скв
-│   ├── historical_cumulative.csv    # накопленные на конец каждого года
-│   └── noise_spec.yaml              # 15% Gaussian, диагональная C_dd
+├── Показатели динамики.xlsx               # 150 листов = 150 моделей tNavigator
+│                                            # 97 строк (помесячно 2011-01 → 2018-12-13)
+│                                            # 581 колонка: <metric> для поля + <metric> (<well>)
+│                                            # Линкинг: суффикс листа = round(SEED) из θ-файла
 │
-├── truth/                           # ОПЦИОНАЛЬНО, может отсутствовать
-│   └── forecast_truth.csv           # truth-добыча на forecast-период (если есть)
+├── Исторические значения.xlsx             # long-format, 2231 строки = 23 скв × 97 мес
+│                                            # ~48 метрик на строку (rates / cum / BHP / injection)
+│                                            # Период: 2011-01-01 → 2018-12-13
 │
-├── geology/
-│   ├── latents_v2.csv               # 9998 × 128, латенты CNN
-│   ├── gmm_k3.csv                   # 9998 × 4: id, cluster, mahalanobis, prior_weight
-│   └── workflow_combined.xlsx       # 9998 × 12, все параметры воркфлоу
+├── Кроссплоты.xlsx                        # 5 листов × 150 моделей × 23 скв
+│                                            # End-of-history snapshot, используется как
+│                                            # sanity-check для phase0 (не основной d_sim)
 │
-└── configs/
-    ├── theta_schema.yaml            # имена параметров адаптации, диапазоны, типы (continuous/discrete)
-    └── well_layout.yaml             # 17 продюсеров + 6 инжекторов, координаты, типы
+├── outputs/cache/forecast.h5              # ГОТОВЫЙ кэш forecast-симуляций
+│                                            # 123 модели × 70 месяцев (2019-01 → 2024-10)
+│                                            # 3 cum + 3 rate метрики × 16 продюсеров
+│                                            # Источник: decoded_results.xlsx
+│                                            # (сам файл в репо отсутствует — есть только кэш)
+│
+├── configs/                               # СГЕНЕРИРОВАНЫ при scaffold-001, НЕ внешний вход
+│   ├── default.yaml                       # глобальные параметры (см. §7)
+│   ├── experiment_setups.yaml             # 3 setup'а (см. §6 Task 3.1)
+│   ├── theta_schema.yaml                  # 9 параметров, ranges по data envelope
+│   ├── noise_spec.yaml                    # σ = 15% × |d_obs|, floor, diagonal
+│   └── well_layout.yaml                   # 16 продюсеров + 6 инжекторов, типы по префиксу
+│                                            # (координаты null — отсутствуют, не нужны для
+│                                            # correlation-based localization)
+│
+└── TZ_ensemble_forecast.md                # этот документ
 ```
 
-**Если каких-то файлов нет** — пайплайн должен явно сообщать, чего не хватает, и не падать с криптой ошибкой. Использовать `pydantic` для валидации схем.
+**Чего НЕТ и принципиально не появится:**
+
+- `workflow_params.csv` (150 × 12 controls) — отсутствует. **Следствие**: setup3 (`use_control_uncertainty=true`) автоматически вырождается в setup2 с залогированным warning. Метрики setup2 и setup3 будут byte-identical.
+- `data/truth/forecast_truth.csv` (реальные замеры на 2019–2024) — **отсутствует и не появится** (подтверждено пользователем в сессии 005). Реальная история обрывается 2018-12-13. **Следствие**: метрики coverage_p10p90, CRPS, cumulative_error формально неприменимы; см. §6 Task 3.3.
+- `data/geology/{latents_v2.csv, gmm_k3.csv, workflow_combined.xlsx}` — отсутствуют. Эти файлы нужны только для Фазы 4, которая out of scope (§12).
+- Координаты скважин — отсутствуют. Не нужны: локализация в этом проекте корреляционная, а не дистанционная.
+
+**Контракт данных, который надо уважать:**
+
+- Wells: 23 активных + 1 dummy `B` (нули везде, фильтруется на загрузке). 16 продюсеров (`WELL1..WELL10`, `WELL1A/1B/2A/3A/4A/5A`) + 6 инжекторов (`INJ1..INJ6`).
+- Time grid истории: 2011-01-01 → 2018-12-13, 97 шагов, не строго календарные (есть day-of-month drift) — loader сохраняет реальные timestamp'ы.
+- Time grid forecast: 2019-01-01 → 2024-10-01, 70 шагов.
+- BHP в истории разрежён (~10% ненулевых) — C_dd для нулевых BHP-слотов инфлируется до σ=1e6, чтобы не доминировать в ES без удаления самих слотов из d_obs (длина d_obs/d_sim сохраняется).
+- N=149 в Фазе 1 (одна модель битая), M=123 в Фазе 3 (только модели с готовым forecast).
+
+**Валидация**: pydantic v2 в `src/cmp_ensemble/io/schemas.py`. Если реальный файл расходится со схемой — обновлять схему и добавлять regression-fixture, **не молча кастовать**.
 
 ---
 
@@ -104,13 +154,15 @@ outputs/
 │   ├── fig02_qc_spread.png          # QC: spread retention
 │   ├── fig03_ablation_p10p90.png    # 3 постановки × 3 кластера × фазы (аналог Fig 14.7)
 │   ├── fig04_cumulative_scatter.png # scatter cumulative (аналог Fig 14.10)
-│   ├── fig05_crps_time.png          # CRPS во времени
 │   └── fig06_cluster3_migration.png # диагностика «съезда» кластера 3
+│   # fig05_crps_time.png — RETIRED (нет d_truth → CRPS не считается)
 │
 └── article_assets/
     ├── ablation_table.tex           # LaTeX-таблица метрик
-    └── figures_v2/                  # пережатые PNG для статьи
+    └── figures_v2/                  # пережатые PNG (300 dpi) и PDF (vector) для статьи
 ```
+
+**Каждый артефакт** под `outputs/` обязан иметь sidecar `*.meta.yaml` с git SHA, seed, config hash, timestamp, и (для Phase 3) полем `evaluation_mode: no_truth_baseline_only` — фиксированное значение для этого проекта.
 
 ---
 
@@ -463,43 +515,43 @@ def aggregate_forecast(
 
 ```python
 def compute_metrics(
-    d_forecast: np.ndarray,    # (N, n_timesteps, n_phases)
-    d_truth: np.ndarray | None,  # (n_timesteps, n_phases), может быть None
-    d_obs: np.ndarray,         # historical, для width_ratio
+    d_forecast: np.ndarray,    # (M, n_timesteps, n_phases)
+    d_baseline: np.ndarray,    # (M_baseline, n_timesteps, n_phases) для width_ratio
+    d_truth: np.ndarray | None,  # ВСЕГДА None в этом проекте — см. §3
 ) -> ForecastMetrics:
     """
     Считает:
-        coverage_p10p90: % шагов, где truth ∈ [P10, P90]
-        crps_per_phase: CRPS по oil/water/gas
-        width_ratio: width_post / width_prior
-        cumulative_error: |∫d_pred - ∫d_truth| / ∫d_truth
-    
-    Если d_truth=None — coverage и cumulative_error возвращают None,
-    остальные считаются.
+        ВСЕГДА:
+            width_ratio: (P90-P10)_post / (P90-P10)_baseline    per (метрика, время)
+            median_shift: P50_post - P50_baseline               per (метрика, время)
+            summary_per_metric: агрегаты по столбцам выше
+            per_cluster_quantiles: P10/P50/P90 по кластерам
+
+        УСЛОВНО (d_truth не None — в этом проекте не выполняется):
+            coverage_p10p90: % шагов, где truth ∈ [P10, P90]
+            crps_per_phase: CRPS по oil/water/gas
+            cumulative_error: |∫d_pred - ∫d_truth| / ∫d_truth
+
+    В этом проекте d_truth всегда None → coverage / CRPS / cumulative_error
+    возвращаются как None. Это не TODO, это финальное состояние.
+    Код для CRPS/coverage оставлен в репо с unit-тестами на синтетике
+    и активируется автоматически, если d_truth когда-либо появится.
     """
 ```
 
-CRPS через `scipy.stats` или ручная реализация (~10 строк):
+CRPS через `scipy.stats` или ручная реализация (~10 строк) — реализован, **не используется в основном пайплайне**:
 
 ```
 CRPS(F, y) = ∫ (F(x) - 1{x >= y})² dx
 ```
 
-**Task 3.4: Train/val split fallback**
+**Task 3.4: Train/val split — RETIRED**
 
-Если truth недоступен:
+Эта задача снята с повестки в сессии 005. Изначально предполагалась как fallback на случай отсутствия forecast-симуляций или truth. Обе предпосылки оказались ложными в обратную сторону: forecast-симуляции **есть** (123/150 моделей, 2019–2024), а truth — **нет вообще** и не появится. Hindcast на val-слайсе 2017–2018 не решает проблему отсутствия truth и при этом ухудшает ES, отнимая у него 2 года данных. Поэтому:
 
-```python
-def split_history(
-    historical_data: ObservationData,
-    train_years: int = 6,
-    val_years: int = 2,
-) -> tuple[ObservationData, ObservationData]:
-    """
-    Делит историю на train/val для эмулированного forecast.
-    """
-```
-
+- Функция `split_history(...)` **не реализуется**.
+- ES в Фазе 1 потребляет всю историю 2011–2018.
+- Phase 3 ablation сравнивает **ансамбли между собой** (см. acceptance ниже), а не с правдой.
 **Task 3.5: Run all three setups**
 
 ```python
@@ -507,19 +559,26 @@ def run_ablation(
     setups: dict[str, SetupConfig],
     ensemble_data: EnsembleData,
     observations: ObservationData,
-    truth: TruthData | None,
+    forecast: ForecastData,                       # 123/150 моделей, 2019–2024
+    truth: TruthData | None = None,               # ВСЕГДА None в этом проекте
 ) -> AblationResults:
     """
     Гоняет три постановки последовательно (или параллельно через joblib).
-    Возвращает AblationResults со всеми метриками и P10/P50/P90.
+    Возвращает AblationResults с per-setup d_forecast, квантилями и метриками
+    (truth-independent — width_ratio, median_shift; truth-dependent остаются None).
     """
 ```
 
-**Acceptance Фаза 3**:
-- Три постановки посчитаны
-- `metrics_summary.csv` готов
-- Если truth есть — coverage и cumulative_error не None
-- Postановка 3 даёт coverage ≥ 80% и CRPS ≤ Postановки 2 ≤ Postановки 1 (если нет — это ВАЖНЫЙ результат, фиксируем как есть, не подгоняем)
+**Acceptance Фаза 3** (переработан в сессии 005 под no-truth режим):
+
+- Три setup'а посчитаны на forecast-периоде (123 модели для setup1 baseline; 149 для setup2/setup3 через proxy).
+- `outputs/forecast/metrics_summary.csv` готов и содержит width_ratio + median_shift по каждой (setup × метрика).
+- Все 5 фигур присутствуют: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90, fig04_cumulative_scatter, fig06_cluster3_migration (PNG 300 dpi + PDF vector). fig05_crps_time **не делается**.
+- В sidecar `metrics_summary.csv.meta.yaml` записано `evaluation_mode: no_truth_baseline_only`.
+- Setup2 и setup3 заведомо byte-identical (нет workflow controls) — это фиксируется в notes ablation-таблицы, не маскируется.
+- Главный аналитический результат — таблица сравнения **формы прогнозного распределения** между setup'ами: насколько ES + локализация сужают/расширяют доверительный интервал, насколько сдвигают медиану. Это и есть claim статьи в no-truth режиме.
+- **Никаких высказываний типа "Setup 2 калиброван лучше Setup 1" в статье быть не должно** — нет правды, не из чего делать такой вывод.
+- Если width_ratio выходит больше 1 (POST шире baseline) — это сигнал асимметрии сравнения (детерминированный baseline vs ансамбль POST). До claim'а в статью нужна либо симметризация (прогон baseline через тот же proxy-пайплайн), либо явное объяснение асимметрии. **Не подгонять.**
 
 ---
 
@@ -632,15 +691,26 @@ cmp-ensemble figures          # перегенерировать figures для 
 
 ## 11. Критерии приёмки всего проекта
 
-- [ ] Все юнит-тесты проходят
-- [ ] Integration test проходит за < 30 сек
-- [ ] На реальных 150 моделях:
+- [ ] Все юнит-тесты проходят (`pytest -q`)
+- [ ] Integration test `tests/test_integration_synthetic.py` проходит за < 30 сек
+- [ ] На реальных 149 моделях:
   - QC-чеки Фазы 1 — все passed
-  - Сгенерирован список моделей для Фазы 2
-  - При наличии forecast-выгрузок — три постановки посчитаны, `metrics_summary.csv` готов
-  - Все 6 figures сгенерированы
-- [ ] HTML-отчёт по проекту собран командой `cmp-ensemble report`
-- [ ] LaTeX-таблица ablation готова
+  - Список моделей для Фазы 2 сгенерирован (`outputs/selection/models_to_resimulate.csv` и `models_proxy.csv` — partition без пересечений)
+  - Proxy провалидирован: median relative error < 1.0 (через leave-one-out на 123 моделях с готовым forecast; ручной re-sim в tNavigator не требуется)
+  - Три setup'а посчитаны на forecast-периоде 2019–2024; `metrics_summary.csv` готов и содержит width_ratio + median_shift по (setup × метрика)
+  - Все **5** figures сгенерированы: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90, fig04_cumulative_scatter, fig06_cluster3_migration (PNG 300 dpi + PDF vector в `outputs/article_assets/figures_v2/`)
+  - Каждый артефакт под `outputs/forecast/` имеет sidecar с `evaluation_mode: no_truth_baseline_only`
+- [ ] HTML-отчёт по проекту собран командой `cmp-ensemble report` (`outputs/report.html` + `outputs/qc/qc_report.html`)
+- [ ] LaTeX-таблица ablation готова (`outputs/article_assets/ablation_table.tex`, компилируется через pdflatex standalone)
+- [ ] README + 3 файла в `docs/` (data_format, methodology, troubleshooting) написаны
+- [ ] `feature_list.json` синхронизирован с реальным состоянием репо (pre-commit hook не даёт расходиться)
+
+**Чего НЕТ в списке приёмки** (явно, чтобы не возникало соблазна добавить):
+
+- coverage_p10p90, CRPS, cumulative_error — **не оцениваются**: нет d_truth.
+- "Setup 2/3 калиброван лучше Setup 1" — **не утверждается**: правды для калибровки нет.
+- Train/val split — снят с повестки.
+- fig05_crps_time — retired.
 
 ---
 
@@ -670,22 +740,26 @@ cmp-ensemble figures          # перегенерировать figures для 
 
 ## 14. Контактные точки и допущения
 
-**Допущения, которые надо подтвердить с пользователем**:
-- Формат tNavigator-выгрузки: CSV / Excel / другой?
-- Доступен ли Watt-truth для forecast периода?
-- Длина forecast-горизонта?
-- Compute-бюджет (всего 150 forecast-runs или меньше)?
+Все исторические допущения (в v1 ТЗ) **разрешены** в ходе аудита сессий 002–005. Резюме:
 
-**Если допущения не подтверждены** — пайплайн должен работать в наиболее общем варианте (cumulative-only, train/val split вместо truth, бюджет на все 150) и явно логировать, какой режим выбран.
+- Формат tNavigator-выгрузки — **Excel** (`Показатели динамики.xlsx`, 150 листов; forecast в `decoded_results.xlsx` → кэш `forecast.h5`).
+- Watt-truth для forecast-периода — **отсутствует, не появится**. Это финальное состояние датасета.
+- Длина forecast-горизонта — **70 месяцев** (2019-01-01 → 2024-10-01).
+- Compute-бюджет — **123/150 моделей досчитаны**, 27 отвалились (pressure depletion). Ручной re-sim не требуется: proxy валидируется leave-one-out на 123.
+- `Адаптированный центроид →` (первая строка каждого листа в `models_near_adapted_centroids.xlsx`) — это reference centroid в θ-пространстве, общая отправная точка для всех 50 моделей кластера. Используется в Task 1.4 (диагностика смещения).
+
+Пайплайн **уже работает** в режиме, который описан этой ревизией ТЗ. Дальнейшие подтверждения не нужны — заводить новые открытые клар-я следует только при реальной новой неоднозначности.
 
 ---
 
 ## 15. Что Claude Code должен спросить до начала работы
 
-1. Где лежат tNavigator-выгрузки? (путь к `manifest.csv`)
-2. Какие имена параметров в `theta_schema.yaml`?
-3. Какой формат `production.csv`? (структура колонок)
-4. Доступен ли forecast-truth? Если да — путь.
-5. Готов ли пользователь пересчитывать 10 моделей вручную для валидации прокси?
+Все 5 оригинальных вопросов из v1 ТЗ **разрешены** (см. §14). Список оставлен в виде "журнала разрешённых вопросов" для аудита:
 
-После ответов — начинать с Task 0.1, не пытаться угадать формат данных по примерам в этом ТЗ.
+1. ~~Где лежат tNavigator-выгрузки?~~ → 4 Excel в корне репо (см. §3).
+2. ~~Какие имена параметров?~~ → 9 параметров: THICK, MAJ_R, AZIMUTH, NUMBER_CHANNELS, CHANNELS_WIDTH, LEN, AMPLITUDE, RELATIVE, PROP.
+3. ~~Формат `production.csv`?~~ → Excel-листы, 97 строк × 581 колонка, `<metric>` для поля + `<metric> (<well>)` per-well.
+4. ~~Доступен ли forecast-truth?~~ → **Нет**, и не появится. Это финал.
+5. ~~Готов ли пользователь пересчитать 10 моделей вручную для валидации прокси?~~ → Не требуется: validation сделан leave-one-out на 123 готовых forecast-моделях; median rel err = 0.60 < 1.0 → PASS.
+
+**Открытых вопросов нет.** Любой следующий Claude Code starts directly with the next unfinished feature in `feature_list.json` (use the priority field to pick the lowest).

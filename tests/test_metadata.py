@@ -32,6 +32,26 @@ def test_write_sidecar_basic(tmp_path) -> None:
     assert "written_at_utc" in data
 
 
+def test_evaluation_mode_canonical_label(tmp_path) -> None:
+    """The Phase 3 default `evaluation_mode` stamp must be the canonical value
+    used everywhere: code, sidecars, docs, ТЗ, and the manuscript label.
+    Cleanup-004 (session 014) chose `no_truth_baseline_only` as the canonical
+    name — this test guards against accidental reintroduction of the older
+    `forecast_no_truth_ensemble_comparison` alias.
+    """
+    canonical = "no_truth_baseline_only"
+    # Source of truth: CLI default
+    from pathlib import Path
+    cli_text = (Path(__file__).resolve().parent.parent / "src" / "cmp_ensemble" / "cli.py").read_text(encoding="utf-8")
+    assert canonical in cli_text, (
+        f"CLI source must reference the canonical evaluation_mode {canonical!r}"
+    )
+    assert "forecast_no_truth_ensemble_comparison" not in cli_text, (
+        "CLI source must NOT reference the retired alias "
+        "'forecast_no_truth_ensemble_comparison'"
+    )
+
+
 def test_write_sidecar_no_config(tmp_path) -> None:
     art = tmp_path / "bar.csv"
     art.write_text("a,b\n1,2\n", encoding="utf-8")
