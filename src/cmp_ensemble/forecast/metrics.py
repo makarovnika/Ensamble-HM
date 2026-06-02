@@ -22,6 +22,10 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+# _trapezoid was added in NumPy 2.0; older versions ship `np.trapz`.
+# We use the newer name when available and fall back gracefully.
+_trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+
 
 @dataclass
 class ForecastMetrics:
@@ -160,8 +164,8 @@ def compute_metrics(
             mask = idx_df["metric"] == metric
             pred = np.nanmedian(d_post[:, mask], axis=0)
             truth = d_truth[mask.to_numpy()]
-            denom = np.abs(np.trapezoid(truth)) if np.trapezoid(truth) != 0 else 1.0
-            rel = float(np.abs(np.trapezoid(pred) - np.trapezoid(truth)) / denom)
+            denom = np.abs(_trapezoid(truth)) if _trapezoid(truth) != 0 else 1.0
+            rel = float(np.abs(_trapezoid(pred) - _trapezoid(truth)) / denom)
             cum_rows.append({"metric": metric, "cumulative_error": rel})
         cum_err_df = pd.DataFrame(cum_rows)
 
