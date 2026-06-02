@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 006 — phase2-002 closed: compute planner CSVs landed; --hindcast diagnostic CLI added)",
+  "last_updated": "2026-06-02 (session 007 — phase3-006 closed: fig01/02/06 + figures CLI subcommand + article_assets mirror)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -417,18 +417,18 @@
       "priority": 20,
       "area": "phase3",
       "title": "Run all setups (Task 3.5) — ablation on forecast period 2019–2024 with ensemble-only metrics",
-      "user_visible_behavior": "`cmp-ensemble run --phase 3` produces `outputs/forecast/metrics_summary.csv` (width_ratio, median_shift across setups), ablation figures, and `outputs/article_assets/ablation_table.tex`. Evaluation regime is documented as 'forecast_no_truth_ensemble_comparison'.",
-      "status": "in_progress",
+      "user_visible_behavior": "`cmp-ensemble run --phase 3` produces `outputs/forecast/metrics_summary.csv` (width_ratio, median_shift across setups, evaluation_mode stamped), all 5 ablation+diagnostic figures, and `outputs/article_assets/ablation_table.tex`. Evaluation regime is stamped as `no_truth_baseline_only` (or `train_val_hindcast_*` under --hindcast).",
+      "status": "passing",
       "verification": [
         "DONE: `cmp-ensemble run --phase 3` exits 0 (commit 7d1826b).",
         "DONE: `outputs/forecast/metrics_summary.csv` written with one row per (setup × cumulative metric) — Накопл. нефть/вода/газ.",
         "DONE: `outputs/forecast/setup{1,2,3}_*_field_total_quantiles.csv` written.",
         "DONE: `outputs/figures/fig03_ablation_p10p90.{png,pdf}` and `outputs/figures/fig04_cumulative_scatter.{png,pdf}` exist.",
         "DONE: `outputs/article_assets/ablation_table.tex` exists.",
-        "MISSING: figures fig01_pipeline, fig02_qc_spread, fig06_cluster3_migration (ТЗ §4 lists 6; fig05_crps_time is retired since CRPS is not computed).",
-        "MISSING: 300 dpi exports under `outputs/article_assets/figures_v2/` for the manuscript.",
-        "MISSING: `evaluation_mode: 'forecast_no_truth_ensemble_comparison'` stamp on the summary CSV sidecar.",
-        "MISSING: interpretation paragraph for the setup2 width_ratio > 1 finding (see notes)."
+        "DONE (session 007): figures fig01_pipeline, fig02_qc_spread, fig06_cluster3_migration — see phase3-006-figures-missing for details.",
+        "DONE (session 007): outputs/article_assets/figures_v2/ mirror of all 5 figures.",
+        "DONE (session 006): `evaluation_mode` column on metrics_summary.csv AND on every Phase 3 sidecar (`no_truth_baseline_only` in forecast mode, `train_val_hindcast_<t>+<v>` under --hindcast).",
+        "REMAINING (documentation, not code): interpretation paragraph for the setup2 width_ratio > 1 finding (belongs in the article, tracked by docs-001)."
       ],
       "evidence": [
         "outputs/forecast/metrics_summary.csv",
@@ -460,18 +460,26 @@
       "priority": 22,
       "area": "phase3",
       "title": "Generate the 3 remaining manuscript figures (fig01, fig02, fig06); fig05 retired",
-      "user_visible_behavior": "`outputs/figures/` contains 5 of the 6 figures listed in ТЗ §4: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90 (done), fig04_cumulative_scatter (done), fig06_cluster3_migration. fig05_crps_time is formally retired (CRPS is not computed — no d_truth). PNG (300 dpi) + PDF (vector) for each. Copies under `outputs/article_assets/figures_v2/`.",
-      "status": "not_started",
+      "user_visible_behavior": "`outputs/figures/` contains 5 of the 6 figures listed in ТЗ §4: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90, fig04_cumulative_scatter, fig06_cluster3_migration. PNG (300 dpi) + vector PDF for each. Mirrored copies under `outputs/article_assets/figures_v2/`. `cmp-ensemble figures` regenerates all from existing artefacts.",
+      "status": "passing",
       "verification": [
-        "fig01_pipeline.{png,pdf} — block diagram of the pipeline (Phase 0..3). Use matplotlib + simple shapes, no actual data needed.",
-        "fig02_qc_spread.{png,pdf} — bar chart of std_post/std_prior per θ component, generated from `outputs/qc/spread_retention.csv`.",
-        "fig06_cluster3_migration.{png,pdf} — static matplotlib export of the per-cluster centroid migration; data from `outputs/qc/cluster_migration.csv` (replaces the existing Plotly HTML for the manuscript).",
-        "All three exist at 300 dpi PNG + vector PDF under `outputs/figures/` AND `outputs/article_assets/figures_v2/`.",
-        "fig05_crps_time is retired — the manuscript's figure list drops from 6 to 5. Document the retirement in the figure caption section.",
-        "Add `tests/test_figures.py` that asserts each file exists and is non-empty after `cmp-ensemble figures` runs."
+        "DONE: fig01_pipeline.{png,pdf} — matplotlib block diagram of Phases 0–3 (schematic, no data input). 267 KB PNG / 58 KB PDF.",
+        "DONE: fig02_qc_spread.{png,pdf} — bar chart from outputs/qc/spread_retention.csv; reference lines at 1.0 (no update) and 0.1 (collapse threshold). 151 KB PNG / 23 KB PDF.",
+        "DONE: fig06_cluster3_migration.{png,pdf} — grouped bars per cluster × θ component from outputs/qc/cluster_migration.csv. Normalised to |prior centroid| so all components compare on the same axis. 436 KB PNG / 28 KB PDF.",
+        "DONE: `cmp-ensemble figures` CLI subcommand rebuilds fig01/02/06 from existing CSVs and mirrors all 5 figures (× PNG/PDF = 10 files) to outputs/article_assets/figures_v2/.",
+        "DONE: tests/test_figures.py — 5 tests pass (fig01/02/06 each write non-empty PNG+PDF; missing-column rejected; mirror helper).",
+        "RETIRED: fig05_crps_time per session-005 audit (no d_truth → no CRPS to plot)."
       ],
-      "evidence": [],
-      "notes": "All three remaining figures are unblocked since d_truth is no longer required for any of them."
+      "evidence": [
+        "src/cmp_ensemble/viz/diagnostics.py — fig01_pipeline, fig02_qc_spread, fig06_cluster3_migration, mirror_to_article_assets",
+        "src/cmp_ensemble/cli.py — @cli.command('figures') subcommand + integrated into _run_phase_3",
+        "outputs/figures/fig01_pipeline.{png,pdf} (267 KB / 58 KB)",
+        "outputs/figures/fig02_qc_spread.{png,pdf} (151 KB / 23 KB)",
+        "outputs/figures/fig06_cluster3_migration.{png,pdf} (436 KB / 28 KB)",
+        "outputs/article_assets/figures_v2/ — 10 files (5 figures × {png,pdf})",
+        "tests/test_figures.py — 5 tests pass"
+      ],
+      "notes": "Closed in session 007. Phase 3 CLI now calls the diagnostic figure builders + the mirror step at the end of `run --phase 3`, so figures stay fresh. fig02 visually confirms the THICK/AZIMUTH-only ES finding (7 of 9 components stuck at σ_post/σ_prior = 1.00 because hard 3/√N localization zeros their K-rows)."
     },
     {
       "id": "phase3-007-report-html",
@@ -493,16 +501,21 @@
       "id": "phase3-008-evaluation-mode-stamp",
       "priority": 24,
       "area": "phase3",
-      "title": "Stamp `evaluation_mode: forecast_no_truth_ensemble_comparison` on every Phase-3 artefact",
-      "user_visible_behavior": "Every CSV / TeX / figure under `outputs/forecast/` and `outputs/figures/` carries an `evaluation_mode` field in its sidecar (`*.meta.yaml`). The only valid value for this project is `forecast_no_truth_ensemble_comparison`: ablation is judged by inter-setup differences (width_ratio, median_shift), not by accuracy against truth.",
-      "status": "not_started",
+      "title": "Stamp `evaluation_mode` on every Phase-3 artefact",
+      "user_visible_behavior": "Every CSV / TeX / figure under `outputs/forecast/` carries an `evaluation_mode` field in its sidecar (`*.meta.yaml`) AND as a leading column on `metrics_summary.csv`. Values: `no_truth_baseline_only` (default forecast mode) or `train_val_hindcast_<train>+<val>` (under --hindcast).",
+      "status": "passing",
       "verification": [
-        "Extend `src/cmp_ensemble/metadata.py` to accept and write the `evaluation_mode` key with the fixed value above.",
-        "Existing sidecars for Phase 3 outputs back-filled.",
-        "Document in `docs/methodology.md` (docs-001) why this mode is the final state, not a stopgap."
+        "DONE: write_sidecar accepts an `evaluation_mode` key via the `extra=` dict and serialises it (commit 6038b65).",
+        "DONE: outputs/forecast/metrics_summary.csv has `evaluation_mode` as its first column.",
+        "DONE: All Phase 3 setup CSVs and the summary CSV carry an `evaluation_mode` field in their *.meta.yaml sidecar.",
+        "REMAINING (documentation): docs/methodology.md (tracked under docs-001) will explain why `no_truth_baseline_only` is the project's final evaluation regime."
       ],
-      "evidence": [],
-      "notes": "Honesty about the evaluation regime is required by the project's 'never lie about results' rule."
+      "evidence": [
+        "src/cmp_ensemble/cli.py — `_run_phase_3` writes evaluation_mode into the summary CSV (insert column) and into each sidecar's extra={...}",
+        "outputs/forecast/metrics_summary.csv (first column `evaluation_mode`)",
+        "outputs/forecast/*.meta.yaml sidecars carry `evaluation_mode`"
+      ],
+      "notes": "Closed in session 007 (the work was landed in session 006 as part of phase3-004-hindcast). Renaming/back-filling the methodology paragraph remains in docs-001."
     },
     {
       "id": "phase3-stop-update",

@@ -243,3 +243,28 @@ Newly surfaced by the audit:
   - Per the session-005 audit: --hindcast metrics are diagnostic-only, not the project's evaluation truth. Documented in the commit message and the CLI help text.
   - Top-80 in `models_to_resimulate.csv` contains duplicate model_ids (e.g. model 1104 at ranks 5 and 7 under cluster_id 0 vs 2). This is consistent with the rest of the pipeline using (cluster, model) as the unique key. If the user wants UNIQUE model IDs for re-simulation, dedup is straightforward to add as a flag.
 - Next best step: the lowest-priority unfinished feature is now either `phase3-005` (priority 20, `in_progress` — needs the 3 missing figures + width_ratio interpretation), or `phase3-006-figures-missing` (priority 22) — the figures are explicitly listed in phase3-005's MISSING. Pick `phase3-006-figures-missing` since it directly closes the gating items.
+
+### Session 008
+
+- Date: 2026-06-02
+- Goal: close `phase3-006-figures-missing` (priority 22) — three remaining manuscript figures, plus the `cmp-ensemble figures` CLI from ТЗ §8, plus the article_assets/figures_v2/ mirror from ТЗ §4.
+- Completed:
+  - `src/cmp_ensemble/viz/diagnostics.py` — three new builders:
+    - `fig01_pipeline(out_path)` — pure-matplotlib block diagram of the four phases (no data input). Boxes with rounded corners + arrows; colour-coded by phase. 267 KB PNG.
+    - `fig02_qc_spread(spread_csv, out_path)` — bar chart from `outputs/qc/spread_retention.csv`. Reference lines at 1.0 (no update, dashed) and 0.1 (collapse threshold, dotted red). Bars below 1.0 are green (updated), at 1.0 are grey (frozen), below 0.1 would be red (collapse). 151 KB PNG.
+    - `fig06_cluster3_migration(migration_csv, out_path)` — grouped bars per cluster × θ component from `outputs/qc/cluster_migration.csv`. Each component normalised by |prior centroid| so THICK (~10) and MAJ_R (~4000) are visually comparable; percentage shift labels above the posterior bar. 436 KB PNG.
+    - `mirror_to_article_assets(figures_dir, article_assets_dir)` — copies every `fig*.{png,pdf}` to `outputs/article_assets/figures_v2/`.
+  - `src/cmp_ensemble/cli.py`:
+    - New `@cli.command("figures")` subcommand that regenerates fig01/02/06 from existing CSVs without re-running any phase, mirrors all 5 figures to `figures_v2/`, and logs sidecar writes.
+    - Integrated into `_run_phase_3`: after Phase 3 writes fig03/04, it now also calls fig01/02/06 builders and the mirror step. Figures stay fresh on every Phase 3 invocation.
+  - `tests/test_figures.py` — 5 tests pass (each builder produces non-empty PNG+PDF, missing-column raises, mirror helper round-trip).
+  - Updated `feature_list.json`: `phase3-006-figures-missing` → `passing`, `phase3-005` → `passing` (figures + evaluation_mode were the last MISSING items; only article-text "interpretation paragraph" remains, tracked under docs-001), `phase3-008-evaluation-mode-stamp` → `passing` (the work was landed in session 006). `last_updated` bumped.
+- Real-data smoke: `cmp-ensemble figures` writes 3 new figures + mirrors 10 files into `figures_v2/`. fig02 visually confirms the THICK/AZIMUTH-only ES finding (7 of 9 bars at 1.00 exactly, 2 bars at 0.98 in green).
+- Verification run: `pytest -q` → 79 passed in 4.47 s (the +5 figure tests + matplotlib startup cost explains the 2× wall-time vs prior). Real-data figures-CLI run completes in < 5 s.
+- Evidence captured: see feature_list.json phase3-006-figures-missing.evidence.
+- Commits: forthcoming — will commit `src/cmp_ensemble/viz/diagnostics.py`, CLI wiring, tests, and tracker bumps together as `phase3 phase3-006: missing figures + figures CLI + figures_v2 mirror`.
+- Files or artifacts updated:
+  - new: `src/cmp_ensemble/viz/diagnostics.py`, `tests/test_figures.py`.
+  - modified: `src/cmp_ensemble/cli.py` (figures subcommand + Phase 3 wiring), `src/cmp_ensemble/viz/__init__.py`, `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue: none introduced. fig05_crps_time remains formally retired per session-005 audit (no d_truth → no CRPS to plot).
+- Next best step: the lowest-priority unfinished feature is now `phase3-007-report-html` (priority 23) — `cmp-ensemble report` HTML rollup. After that comes `docs-001` (priority 30) for README + docs/{data_format,methodology,troubleshooting}.md. Either is a clean win; the HTML rollup is mechanically smaller.

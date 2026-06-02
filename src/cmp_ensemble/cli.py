@@ -34,6 +34,12 @@ from cmp_ensemble.viz.ablation import (
     fig03_ablation_p10p90,
     fig04_cumulative_scatter,
 )
+from cmp_ensemble.viz.diagnostics import (
+    fig01_pipeline,
+    fig02_qc_spread,
+    fig06_cluster3_migration,
+    mirror_to_article_assets,
+)
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -924,13 +930,92 @@ def _run_phase_3(
     log.info(f"  → {fig03}")
     log.info(f"  → {fig04}")
 
+    # Diagnostic figures (fig01 schematic, fig02 from QC, fig06 from migration)
+    qc_dir = root / "outputs" / "qc"
+    fig01 = fig01_pipeline(figures_dir / "fig01_pipeline.png")
+    log.info(f"  → {fig01}")
+    spread_csv = qc_dir / "spread_retention.csv"
+    if spread_csv.exists():
+        fig02 = fig02_qc_spread(spread_csv, figures_dir / "fig02_qc_spread.png")
+        log.info(f"  → {fig02}")
+    migration_csv = qc_dir / "cluster_migration.csv"
+    if migration_csv.exists():
+        fig06 = fig06_cluster3_migration(migration_csv, figures_dir / "fig06_cluster3_migration.png")
+        log.info(f"  → {fig06}")
+
     # LaTeX table
     tex_dir = root / "outputs" / "article_assets"
     tex_dir.mkdir(parents=True, exist_ok=True)
     p_tex = build_latex_ablation_table(summary, tex_dir / "ablation_table.tex")
     log.info(f"  → {p_tex}")
 
+    # Mirror figures to article_assets/figures_v2/
+    article_dir = tex_dir / "figures_v2"
+    copied = mirror_to_article_assets(figures_dir, article_dir)
+    log.info(f"  mirrored {len(copied)} figure files → {article_dir.relative_to(root)}")
+
     log.info("Phase 3 DONE")
+
+
+@cli.command(name="figures")
+def figures_cmd() -> None:
+    """Regenerate the manuscript figures from existing outputs.
+
+    Reads from outputs/qc/ and outputs/forecast/ — does NOT re-run any
+    phase. Run after `cmp-ensemble run --phase {0,1,2,3}` has produced the
+    underlying artefacts. Writes 300 dpi PNG + vector PDF to
+    outputs/figures/ and mirrors them under outputs/article_assets/figures_v2/.
+    """
+    root = project_root()
+    cfg = load_default_config(root)
+    figures_dir = root / "outputs" / "figures"
+    qc_dir = root / "outputs" / "qc"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info("=" * 60)
+    log.info("FIGURES — regenerating manuscript artefacts")
+    log.info("=" * 60)
+
+    # fig01 — pipeline schematic, no data input
+    p1 = fig01_pipeline(figures_dir / "fig01_pipeline.png")
+    write_sidecar(p1, config=cfg, repo_root=root,
+                  extra={"figure": "fig01_pipeline", "source": "static_schematic"})
+    log.info(f"  → {p1.relative_to(root)}")
+
+    # fig02 — QC spread retention (requires Phase 1 outputs)
+    spread_csv = qc_dir / "spread_retention.csv"
+    if spread_csv.exists():
+        p2 = fig02_qc_spread(spread_csv, figures_dir / "fig02_qc_spread.png")
+        write_sidecar(p2, config=cfg, repo_root=root,
+                      extra={"figure": "fig02_qc_spread", "source": str(spread_csv.relative_to(root))})
+        log.info(f"  → {p2.relative_to(root)}")
+    else:
+        log.warning(f"  skip fig02: {spread_csv} not found (run --phase 1 first)")
+
+    # fig06 — cluster migration (requires Phase 1 outputs)
+    migration_csv = qc_dir / "cluster_migration.csv"
+    if migration_csv.exists():
+        p6 = fig06_cluster3_migration(migration_csv, figures_dir / "fig06_cluster3_migration.png")
+        write_sidecar(p6, config=cfg, repo_root=root,
+                      extra={"figure": "fig06_cluster3_migration", "source": str(migration_csv.relative_to(root))})
+        log.info(f"  → {p6.relative_to(root)}")
+    else:
+        log.warning(f"  skip fig06: {migration_csv} not found (run --phase 1 first)")
+
+    # fig03 + fig04 are produced by `run --phase 3`. If they aren't already on
+    # disk we leave them alone (no re-run from here).
+    for stale in ("fig03_ablation_p10p90", "fig04_cumulative_scatter"):
+        p = figures_dir / f"{stale}.png"
+        if p.exists():
+            log.info(f"  ✓ {p.relative_to(root)} (kept from previous Phase 3 run)")
+        else:
+            log.warning(f"  ✗ {p.relative_to(root)} missing — run `--phase 3` to regenerate")
+
+    # Mirror everything into article_assets/figures_v2/
+    article_dir = root / "outputs" / "article_assets" / "figures_v2"
+    copied = mirror_to_article_assets(figures_dir, article_dir)
+    log.info(f"  mirrored {len(copied)} files → {article_dir.relative_to(root)}")
+    log.info("FIGURES DONE")
 
 
 @cli.command(name="compare-phase1")
