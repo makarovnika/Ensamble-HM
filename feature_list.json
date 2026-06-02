@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 008 — phase3-007 closed: cmp-ensemble report HTML rollup)",
+  "last_updated": "2026-06-02 (session 009 — docs-001 closed: README + docs/{data_format, methodology, troubleshooting}.md; light theme on dashboards)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -545,15 +545,20 @@
       "area": "docs",
       "title": "Author README + docs/{data_format, methodology, troubleshooting}.md (ТЗ §10)",
       "user_visible_behavior": "Repo root has a `README.md` quickstart; `docs/` has the three reference documents.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "`README.md` covers: install, run `cmp-ensemble run --phase 0..3`, expected outputs.",
-        "`docs/data_format.md` specifies the Excel inputs and pydantic schemas.",
-        "`docs/methodology.md` cites Evensen 2026 Ch. 5–6 + 14 and explains the subspace + localization choices.",
-        "`docs/troubleshooting.md` lists at least: ensemble collapse, NaN in dynamics, sheet/seed mismatch, BHP sparsity, setup3 degradation."
+        "DONE: `README.md` covers install (with the --no-deps fallback), quickstart for `run --phase 0..3`, expected outputs tree, flag reference, test command, and an honest limitations section.",
+        "DONE: `docs/data_format.md` specifies every Excel input (sheets, columns, shapes), the (cluster, round(SEED)) linkage rule, the pydantic schemas, the year-end aggregation cadence, the BHP-inflation policy, and the .meta.yaml sidecar format.",
+        "DONE: `docs/methodology.md` cites Evensen, Oliver & Hanea 2026 — Ch. 5-6 for ES + subspace, Ch. 14 for ablation, Ch. 6 for localization — plus derives the subspace projection and explains the three evaluation modes (no_truth_baseline_only, train_val_hindcast_*, forecast_vs_truth) with audit references.",
+        "DONE: `docs/troubleshooting.md` covers ensemble collapse, NaN in dynamics, sheet/seed mismatch, BHP sparsity, setup3 degradation, the 6-of-9 frozen-parameters finding, out-of-prior-bounds θ_post, duplicate models, missing decoded_results.xlsx, jinja2 import error, dark-cached cluster3 diagnostic — each with a specific fix path."
       ],
-      "evidence": [],
-      "notes": "All four documents required by ТЗ §10. Currently absent."
+      "evidence": [
+        "README.md (≈3 KB) — quickstart + flag reference + honest limitations",
+        "docs/data_format.md (≈5 KB) — full input + schema reference",
+        "docs/methodology.md (≈4 KB) — ES equations + localization + evaluation_mode rationale",
+        "docs/troubleshooting.md (≈6 KB) — 7 categories of diagnostics with symptom/diagnosis/fix"
+      ],
+      "notes": "Closed in session 009. The four documents together cover all of ТЗ §10. Article-side narrative (paragraph interpreting setup2 width_ratio > 1) is still up to the user."
     },
     {
       "id": "tests-001-coverage",
@@ -583,6 +588,115 @@
       ],
       "evidence": [],
       "notes": "Phase 2 and Phase 3 code shipped in 77a76c8 and 7d1826b WITHOUT marking the corresponding features as passing — this audit had to reverse-engineer the state. This hook prevents the same drift in future sessions."
+    },
+    {
+      "id": "viz-001-tier-a-static",
+      "priority": 25,
+      "area": "viz",
+      "title": "Tier A — 5 manuscript figures (per docs/visualization_plan.md)",
+      "user_visible_behavior": "`outputs/figures/{fig01_pipeline,fig02_qc_spread,fig03_ablation_p10p90,fig04_cumulative_scatter,fig06_cluster3_migration}.{png,pdf}` exist; mirrored under `outputs/article_assets/figures_v2/`. fig05_crps_time is RETIRED.",
+      "status": "not_started",
+      "verification": [
+        "Read `docs/visualization_plan.md` Tier A for per-figure spec (data source, plot type, axes, palette, acceptance).",
+        "fig01_pipeline: handcrafted matplotlib block diagram, 12×4 in landscape.",
+        "fig02_qc_spread: horizontal bar chart from `outputs/qc/spread_retention.csv`; AZIMUTH and THICK bars blue (<0.9), 6 params grey (~1.0).",
+        "fig03_ablation_p10p90: review existing file; restyle to the unified palette; add width_ratio annotation per panel.",
+        "fig04_cumulative_scatter: review existing file; ensure 3 panels, cluster-colored points, y=x diagonal, median_shift annotation.",
+        "fig06_cluster3_migration: NEW static matplotlib version (replaces interactive HTML for the manuscript); 3×9 grid showing σ-units shift per (cluster, parameter).",
+        "Each figure has a sidecar `<file>.png.meta.yaml` with git SHA + source data paths.",
+        "Add `tests/test_figures.py::test_tier_a_files_exist` — asserts each PNG/PDF is non-empty after `cmp-ensemble figures`."
+      ],
+      "evidence": [],
+      "notes": "All Tier A figures are unblocked (data already in `outputs/`). Wire them into `cmp-ensemble figures` CLI subcommand."
+    },
+    {
+      "id": "viz-002-tier-b-diagnostic",
+      "priority": 26,
+      "area": "viz",
+      "title": "Tier B — 8 diagnostic figures for the HTML QC report",
+      "user_visible_behavior": "`outputs/qc/figures/qc_*.png` exist for: singular_spectrum, locmask_heatmap, mahalanobis_distribution, per_well_misfit_heatmap, theta_pairgrid, proxy_validation_scatter, forecast_per_well, history_match_quality.",
+      "status": "not_started",
+      "verification": [
+        "Read `docs/visualization_plan.md` Tier B for per-figure spec.",
+        "B1 qc_singular_spectrum: log-scale spectrum from `outputs/matrices/singular_values.npy`, truncation marker at index 16.",
+        "B2 qc_locmask_heatmap: binary heatmap of `outputs/matrices/locmask.npy` (9×384) with metric block separators.",
+        "B3 qc_mahalanobis_distribution: histogram + KDE, 3 clusters overlaid, BC=0.368 annotation.",
+        "B4 qc_per_well_misfit_heatmap: 2×1 diverging heatmap prior vs posterior.",
+        "B5 qc_theta_pairgrid: seaborn PairGrid with prior (grey) + posterior (red) overlay across 9 params.",
+        "B6 qc_proxy_validation_scatter: 3-panel scatter predicted vs actual per cluster.",
+        "B7 qc_forecast_per_well: 4×4 small multiples, oil rate per well, 3 setups overlaid.",
+        "B8 qc_history_match_quality: 3-panel field-total oil/water/gas, ensemble cloud + d_obs line.",
+        "All files written under `outputs/qc/figures/`, ≤ 200 KB PNG each (use `dpi=120` for QC, manuscript-level only for Tier A)."
+      ],
+      "evidence": [],
+      "notes": "Tier B intentionally uses lower DPI (file size matters for embedding in HTML). Not vector — PNG only is fine."
+    },
+    {
+      "id": "viz-003-tier-c-interactive",
+      "priority": 27,
+      "area": "viz",
+      "title": "Tier C — 2 new interactive plotly figures (interactive_ablation, interactive_theta_explorer)",
+      "user_visible_behavior": "`outputs/qc/interactive_ablation.html` and `outputs/qc/interactive_theta_explorer.html` open in a browser without console errors and support the documented interactions.",
+      "status": "not_started",
+      "verification": [
+        "Read `docs/visualization_plan.md` Tier C for spec.",
+        "interactive_ablation: dropdown for metric (oil/water/gas), 3 setups overlaid, P50 line + P10/P90 envelope.",
+        "interactive_theta_explorer: parallel-coordinates OR scatter-matrix of 9 params, color by cluster, toggle prior vs posterior.",
+        "Existing `outputs/qc/cluster3_diagnostic.html` (C1) gets a tooltip refresh — add σ-shift hover."
+      ],
+      "evidence": [
+        "outputs/qc/cluster3_diagnostic.html (C1 — already exists, needs polish)"
+      ],
+      "notes": "Plotly only. No client-side data loading — all data baked into the HTML at generation time."
+    },
+    {
+      "id": "viz-004-html-reports",
+      "priority": 28,
+      "area": "viz",
+      "title": "Assemble `outputs/qc/qc_report.html` and `outputs/report.html` via Jinja2 templates",
+      "user_visible_behavior": "`cmp-ensemble report` builds two HTML files matching the layouts in `docs/visualization_plan.md` § 'Структура HTML-отчётов'.",
+      "status": "not_started",
+      "verification": [
+        "CLI subcommand `cmp-ensemble report` registered in `src/cmp_ensemble/cli.py`.",
+        "`outputs/qc/qc_report.html` contains 11 sections per the plan, embeds 7 Tier B PNGs + 3 tables.",
+        "`outputs/report.html` contains 8 sections per the plan, embeds Tier A figures + interactive plotly + the honesty paragraph about missing d_truth.",
+        "Both HTML files open in Chrome without 404s on assets (use relative paths under `outputs/`).",
+        "Jinja2 templates live under `src/cmp_ensemble/viz/templates/`."
+      ],
+      "evidence": [],
+      "notes": "Supersedes `phase3-007-report-html` (kept as alias)."
+    },
+    {
+      "id": "viz-005-figure-captions",
+      "priority": 29,
+      "area": "viz",
+      "title": "Draft `docs/figure_captions.md` — manuscript-ready captions for Tier A figures",
+      "user_visible_behavior": "`docs/figure_captions.md` exists with 5 captions (one per Tier A figure), in the target journal's preferred style (Q1 O&G or ML), ready to copy-paste into the manuscript.",
+      "status": "not_started",
+      "verification": [
+        "5 captions present.",
+        "Each caption: ≤ 80 words, includes panel descriptions where relevant, names colors and markers, refers to the relevant section of the methodology.",
+        "Caption for fig03 explicitly notes that setup2 ≡ setup3 (no workflow controls in this dataset).",
+        "No caption claims accuracy against truth (e.g. no 'matches the observed production' phrasing)."
+      ],
+      "evidence": [],
+      "notes": "Final honesty pass — make sure no caption smuggles in a truth-comparison claim."
+    },
+    {
+      "id": "viz-006-cli-figures-subcommand",
+      "priority": 30,
+      "area": "viz",
+      "title": "`cmp-ensemble figures` CLI subcommand — regenerate all viz from cached artefacts in one shot",
+      "user_visible_behavior": "`cmp-ensemble figures` rebuilds every Tier A + Tier B + Tier C output from existing `outputs/matrices/`, `outputs/qc/`, `outputs/selection/`, `outputs/forecast/` and `outputs/cache/forecast.h5`. Should complete in < 5 min.",
+      "status": "not_started",
+      "verification": [
+        "`cmp-ensemble figures --help` lists `--tier A|B|C|all` and `--only <figname>` options.",
+        "Default `cmp-ensemble figures` regenerates all tiers.",
+        "After running, `tests/test_figures.py` passes — all expected files exist and non-empty.",
+        "Re-runs are byte-identical given the same git SHA (deterministic — fix random_state where relevant)."
+      ],
+      "evidence": [],
+      "notes": "Allows the user to iterate on figure styling without rerunning Phase 0–3."
     },
     {
       "id": "phase4-stub",

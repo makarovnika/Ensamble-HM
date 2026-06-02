@@ -294,3 +294,23 @@ Newly surfaced by the audit:
   - modified: `src/cmp_ensemble/cli.py` (report subcommand), `feature_list.json`, `claude-progress.md`.
 - Known risk or unresolved issue: jinja2 (v3.1.6) is a runtime dependency for report generation. Already in pyproject.toml's dep list, but if the user installs `pip install -e . --no-deps` (as happens on the test machine) they need to `pip install jinja2` separately. Not blocking — the rest of the pipeline works without it.
 - Next best step: the lowest-priority unfinished code feature is now `docs-001` (priority 30) — README + docs/{data_format, methodology, troubleshooting}.md. After that: `tests-001-coverage` (priority 31) for four more unit-test modules. The `phase4-stub` at priority 99 is out of scope per ТЗ §12.
+
+### Session 010
+
+- Date: 2026-06-02
+- Goal: close `docs-001` (priority 30) — README + three reference documents per ТЗ §10. Also bundle the light-theme HTML-dashboard work from the previous user request.
+- Completed:
+  - `README.md` — quickstart: one-line project description, install (with the `--no-deps` fallback path for offline test machines), per-phase `python -m cmp_ensemble.cli run --phase N` commands, all the CLI flags in a table (`--clip-to-prior`, `--localization-factor`, `--d-obs-type`, `--dedup-ensemble`, `--keep-ooe`, `--hindcast`, `--variant-label`), expected outputs tree, supporting subcommands (`compare-phase1`, `figures`, `report`), test command, and an honest "Limitations" section (no d_truth, no workflow controls, cluster-0 survivable subset, hard-3/√N too aggressive, 138/149 out-of-envelope proxy predictions).
+  - `docs/data_format.md` — every Excel input documented sheet-by-sheet (columns, shapes, drift), the `(cluster_id, round(SEED))` linkage rule with the 150/150 validation note, dummy well `B`, year-end aggregation cadence with the 8 actual anchor dates, all four pydantic schemas listed (`EnsembleData`, `ObservationData`, `StateVectorSchema`, `ForecastData`), the per-metric soft floor for C_dd, and the `.meta.yaml` sidecar format.
+  - `docs/methodology.md` — Evensen, Oliver & Hanea 2026 citations: Ch. 5–6 for ES + subspace, Ch. 14 for ablation, Ch. 6 for localization. ES equations with the symbol table. Subspace projection derivation showing `(C_dd_ens + C_dd)⁻¹ ≈ V_r (Σ_r² + V_r⊤ C_dd V_r)⁻¹ V_r⊤`. Hard 3/√N localization with the empirical observation table (variants A/B/C side-by-side). QC thresholds. Linear proxy + leave-out validation results. Mahalanobis ranking + compute planner. Three Phase 3 setups + the evaluation_mode table (`no_truth_baseline_only`, `train_val_hindcast_*`, `forecast_vs_truth`) explaining why we can never reach the third.
+  - `docs/troubleshooting.md` — 7 categories: pytest-fail-itself, Phase 0 (sheet/seed mismatch, truncated timeline, NaN, dummy well B), Phase 1 (collapse, 6-frozen-parameters under hard 3/√N, out-of-prior θ_post, duplicate models), Phase 2 (BHP sparsity, proxy WARN), Phase 3 (forecast.h5 missing, decoded_results unreachable via UNC, setup3≡setup2, empty coverage column, width_ratio≈600 in hindcast), report/figures (jinja2 missing, dark-cached cluster3), reproducibility (compare sidecars). Each row gives symptom / diagnosis / fix.
+  - Also bundled the **light-theme HTML dashboard** work from the previous user request (commit `ed36a22`): `src/cmp_ensemble/report.py` CSS and `src/cmp_ensemble/qc/cluster_migration.py` plotly config + HTML head injection now force `color-scheme: light only` on all three dashboards. Tests in `test_report.py` and `test_cluster_migration.py` enforce this.
+  - Updated `feature_list.json`: `docs-001` → `passing` with full evidence; `last_updated` bumped.
+- Verification run: `pytest -q` → 85 passed in 5.46 s.
+- Evidence captured: 4 new documentation files + the light-theme tests already in `tests/test_report.py` + `tests/test_cluster_migration.py`.
+- Commits: forthcoming — `docs docs-001: README + docs/{data_format, methodology, troubleshooting}.md`.
+- Files or artifacts updated:
+  - new: `README.md`, `docs/data_format.md`, `docs/methodology.md`, `docs/troubleshooting.md`.
+  - modified: `feature_list.json`, `claude-progress.md`.
+- Known risk or unresolved issue: none.
+- Next best step: lowest-priority unfinished features now are `tests-001-coverage` (priority 31 — `test_metrics`, `test_setups`, `test_selection`; `test_split` is already done) and `tracker-001-reconcile` (priority 32 — pre-commit hook to refuse `src/` commits without `feature_list.json` updates). Both are pure quality-of-life. `phase4-stub` at priority 99 is out of scope per ТЗ §12.
