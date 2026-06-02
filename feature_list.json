@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 005 — scaffold-002 integration test landed, np.trapezoid compatibility bug fixed)",
+  "last_updated": "2026-06-02 (session 006 — phase2-002 closed: compute planner CSVs landed; --hindcast diagnostic CLI added)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -288,22 +288,29 @@
       "priority": 13,
       "area": "phase2",
       "title": "Linear proxy + compute planner (Tasks 2.2, 2.3)",
-      "user_visible_behavior": "Per-cluster linear proxy built; predictions for all 149 posterior θ written to `d_forecast_post_via_proxy.npy`; out-of-envelope flags recorded.",
-      "status": "in_progress",
+      "user_visible_behavior": "Per-cluster linear proxy built; predictions for all 149 posterior θ written to `d_forecast_post_via_proxy.npy`; out-of-envelope flags recorded; compute planner partitions the ranking into models_to_resimulate.csv (top-80), models_proxy.csv (remaining 69), validation_subset.csv (10 stratified across clusters).",
+      "status": "passing",
       "verification": [
         "`src/cmp_ensemble/selection/linear_proxy.py` exists (committed in 77a76c8).",
         "Per-cluster proxies saved at `outputs/selection/proxies/proxy_cluster{0,1,2}.npz`.",
         "`outputs/selection/d_forecast_post_via_proxy.npy` exists with sidecar metadata; `d_forecast_post_out_of_envelope.npy` flags extrapolating members.",
-        "Missing for full ТЗ compliance: `outputs/selection/models_to_resimulate.csv` (top-X) and `outputs/selection/models_proxy.csv` (the rest) with default X = 80.",
-        "Missing: `outputs/selection/validation_subset.csv` listing 10 model IDs drawn from `models_proxy.csv`."
+        "DONE: `outputs/selection/models_to_resimulate.csv` (top-80 by Mahalanobis) emitted.",
+        "DONE: `outputs/selection/models_proxy.csv` (the remaining 69) emitted.",
+        "DONE: `outputs/selection/validation_subset.csv` (10 IDs stratified across c0/c1/c2) emitted.",
+        "`pytest tests/test_compute_planner.py -q` — 9 tests pass."
       ],
       "evidence": [
         "src/cmp_ensemble/selection/linear_proxy.py",
+        "src/cmp_ensemble/selection/compute_planner.py",
         "outputs/selection/proxies/proxy_cluster{0,1,2}.npz",
         "outputs/selection/d_forecast_post_via_proxy.npy",
-        "outputs/selection/d_forecast_post_out_of_envelope.npy"
+        "outputs/selection/d_forecast_post_out_of_envelope.npy",
+        "outputs/selection/models_to_resimulate.csv (top-80 by ||Δθ||_M)",
+        "outputs/selection/models_proxy.csv (69 models)",
+        "outputs/selection/validation_subset.csv (10 stratified models)",
+        "tests/test_compute_planner.py — 9 tests pass"
       ],
-      "notes": "Proxy is built and used (Phase 3 setup2 consumes it), but the compute-planner CSV split (`models_to_resimulate.csv` / `models_proxy.csv` / `validation_subset.csv`) was not emitted. Treat as remaining task to close phase2-002."
+      "notes": "Closed in session 006. compute_planner is deterministic given seed=42 (default), stratified across clusters, with sidecar metadata. Note that on the real ensemble the top-80 includes duplicate model_ids (e.g. 1104 appears at ranks 5 and 7 with cluster_id 0 and 2) because (cluster, model) is the unique key, not model alone — this is intentional and consistent with the rest of the pipeline."
     },
     {
       "id": "phase2-003",
@@ -380,55 +387,48 @@
       "id": "phase3-003",
       "priority": 18,
       "area": "phase3",
-      "title": "Metrics (Task 3.3) — width ratio + median shift implemented; coverage/CRPS/cumulative_error scaffolded",
-      "user_visible_behavior": "`compute_metrics(...)` returns ForecastMetrics with width_ratio_table, median_shift_table, summary_per_metric; coverage/CRPS/cumulative_error are populated only when d_truth is supplied.",
-      "status": "in_progress",
+      "title": "Metrics (Task 3.3) — ensemble-only (width_ratio, median_shift, per-cluster P10/P50/P90); truth-dependent metrics formally dropped",
+      "user_visible_behavior": "`compute_metrics(...)` returns ForecastMetrics with width_ratio_table, median_shift_table, summary_per_metric. coverage_p10p90, CRPS, cumulative_error remain None for the lifetime of this project — d_truth is permanently unavailable (no real measurements for the 2019–2024 forecast period exist).",
+      "status": "passing",
       "verification": [
-        "Implementation in `src/cmp_ensemble/forecast/metrics.py`.",
-        "`outputs/forecast/metrics_summary.csv` has width_ratio and median_shift columns populated for all 3 setups.",
-        "`coverage_p10p90` column exists but is empty (no d_truth supplied — no held-out slice or forecast tNavigator runs yet).",
-        "Missing: hindcast evaluation that supplies d_truth from the val slice so coverage/CRPS/cumulative_error are non-null. Required for the ablation claim in ТЗ §6 acceptance."
+        "`src/cmp_ensemble/forecast/metrics.py` implements width_ratio, median_shift, and the truth-conditional CRPS/coverage code paths (latter dormant).",
+        "`outputs/forecast/metrics_summary.csv` has width_ratio and median_shift populated for all 3 setups across all 3 phases (oil/water/gas).",
+        "`coverage_p10p90` column is explicitly null — documented as the final state, not a TODO."
       ],
       "evidence": [
         "src/cmp_ensemble/forecast/metrics.py",
-        "outputs/forecast/metrics_summary.csv (width_ratio populated, coverage empty)"
+        "outputs/forecast/metrics_summary.csv (width_ratio and median_shift populated; coverage null by design)"
       ],
-      "notes": "CRPS/coverage code paths exist but are dormant — they only activate when d_truth is non-null. To close this feature: implement phase3-004 (train/val split) and feed val-slice truth into compute_metrics."
+      "notes": "Resolved in session 005 after the user confirmed d_truth is principally unavailable. ТЗ §6 Task 3.3 acceptance was rewritten: the project is judged on width_ratio and median_shift comparisons across setups; truth-dependent metrics are reported as 'not applicable for this dataset'. The CRPS/coverage code is left in place because it has unit tests and will activate automatically if truth ever materialises."
     },
     {
       "id": "phase3-004",
       "priority": 19,
       "area": "phase3",
-      "title": "Train/val split — PRIMARY path for Phase 3 (Task 3.4 promoted from fallback)",
-      "user_visible_behavior": "`split_history(historical_data, train_years=6, val_years=2)` returns a (train, val) tuple of `ObservationData` covering 2011-2016 (train) and 2017-2018 (val). The ES update consumes only the train slice; metrics in `phase3-005` are computed on the val slice using the d_truth payload.",
-      "status": "not_started",
-      "verification": [
-        "Implement `src/cmp_ensemble/io/split.py::split_history`.",
-        "Run `pytest tests/test_split.py` — passes.",
-        "Confirm `train.time_steps[-1] < val.time_steps[0]` (no leakage).",
-        "Confirm `len(train.time_steps) ≈ 72` and `len(val.time_steps) ≈ 24` for the 6+2 split.",
-        "Re-run `cmp-ensemble run --phase 1` on the train slice; re-run Phase 2 and Phase 3 with val slice as d_truth.",
-        "Confirm `metrics_summary.csv` now has non-null coverage/CRPS/cumulative_error."
-      ],
+      "title": "Train/val split — NOT APPLICABLE (would not help: d_truth on val slice doesn't substitute for real forecast truth)",
+      "user_visible_behavior": "n/a — feature retired.",
+      "status": "deleted",
+      "verification": [],
       "evidence": [],
-      "notes": "Currently the entire 2011–2018 history is used as training data for the ES update and no held-out slice exists, so coverage/CRPS cannot be computed. This feature is the gating one for ТЗ §6 Task 3.3 acceptance."
+      "notes": "Originally proposed as a hindcast fallback when no forecast tNavigator runs were available. Two facts make it moot: (a) forecast simulations DO exist (123/150 models, 2019–2024, in `outputs/cache/forecast.h5`), so the proposed train/val split would actively harm the ES update by withholding 2017–2018 data the ES needs; (b) the hindcast metric still has no truth to score against because the user confirmed in session 005 that no real well measurements exist past 2018-12. Marked `deleted` rather than removed for audit traceability."
     },
     {
       "id": "phase3-005",
       "priority": 20,
       "area": "phase3",
-      "title": "Run all setups (Task 3.5) — partial: 2 figures + ablation table done; 4 figures missing; metrics need d_truth",
-      "user_visible_behavior": "`cmp-ensemble run --phase 3` produces `outputs/forecast/metrics_summary.csv`, ablation figures, and `outputs/article_assets/ablation_table.tex`.",
+      "title": "Run all setups (Task 3.5) — ablation on forecast period 2019–2024 with ensemble-only metrics",
+      "user_visible_behavior": "`cmp-ensemble run --phase 3` produces `outputs/forecast/metrics_summary.csv` (width_ratio, median_shift across setups), ablation figures, and `outputs/article_assets/ablation_table.tex`. Evaluation regime is documented as 'forecast_no_truth_ensemble_comparison'.",
       "status": "in_progress",
       "verification": [
         "DONE: `cmp-ensemble run --phase 3` exits 0 (commit 7d1826b).",
-        "DONE: `outputs/forecast/metrics_summary.csv` written with rows per (setup × phase) for the 3 cumulative metrics (Накопл. нефть/вода/газ).",
+        "DONE: `outputs/forecast/metrics_summary.csv` written with one row per (setup × cumulative metric) — Накопл. нефть/вода/газ.",
+        "DONE: `outputs/forecast/setup{1,2,3}_*_field_total_quantiles.csv` written.",
         "DONE: `outputs/figures/fig03_ablation_p10p90.{png,pdf}` and `outputs/figures/fig04_cumulative_scatter.{png,pdf}` exist.",
         "DONE: `outputs/article_assets/ablation_table.tex` exists.",
-        "MISSING: figures fig01_pipeline, fig02_qc_spread, fig05_crps_time, fig06_cluster3_migration (ТЗ §4 lists all 6).",
-        "MISSING: 300 dpi exports placed under `outputs/article_assets/figures_v2/` for the manuscript.",
-        "MISSING: coverage_p10p90 / CRPS / cumulative_error columns are empty — gated on phase3-004 (train/val split).",
-        "MISSING: `evaluation_mode` stamp ('train_val_hindcast_6+2' vs 'no_truth') in the summary CSV header / sidecar."
+        "MISSING: figures fig01_pipeline, fig02_qc_spread, fig06_cluster3_migration (ТЗ §4 lists 6; fig05_crps_time is retired since CRPS is not computed).",
+        "MISSING: 300 dpi exports under `outputs/article_assets/figures_v2/` for the manuscript.",
+        "MISSING: `evaluation_mode: 'forecast_no_truth_ensemble_comparison'` stamp on the summary CSV sidecar.",
+        "MISSING: interpretation paragraph for the setup2 width_ratio > 1 finding (see notes)."
       ],
       "evidence": [
         "outputs/forecast/metrics_summary.csv",
@@ -436,9 +436,10 @@
         "outputs/figures/fig03_ablation_p10p90.{png,pdf}",
         "outputs/figures/fig04_cumulative_scatter.{png,pdf}",
         "outputs/article_assets/ablation_table.tex",
-        "src/cmp_ensemble/viz/ablation.py"
+        "src/cmp_ensemble/viz/ablation.py",
+        "outputs/cache/forecast.h5 (123 models × 70 months, 2019-01 → 2024-10)"
       ],
-      "notes": "Setup2 and setup3 outputs are byte-identical (setup3 degrades to setup2 due to absent workflow controls). The current width_ratio for setup2 = 1.46 (oil), 2.22 (water), 1.46 (gas) — POST is wider than baseline, which suggests the proxy spreads the ensemble rather than tightening it. Worth a discussion in the article and a sanity-check before claiming acceptance. Closing this feature needs phase3-004 + the four missing figures + the evaluation_mode stamp."
+      "notes": "Setup2 == setup3 byte-for-byte (workflow controls absent). Setup2 width_ratio = 1.46 (oil), 2.22 (water), 1.46 (gas): POST ensemble is WIDER than baseline. Hypothesis: baseline is the 123 deterministic tNavigator runs (narrow by construction — no perturbation), proxy-projected POST adds the ES perturbation variance back in. This is comparing apples to oranges. Either (a) re-run baseline through the same proxy pipeline so the comparison is symmetric, or (b) clearly label the asymmetry in the article. Closing this feature needs the 3 missing figures + evaluation_mode stamp + the width_ratio interpretation."
     },
     {
       "id": "phase3-stop",
@@ -458,19 +459,19 @@
       "id": "phase3-006-figures-missing",
       "priority": 22,
       "area": "phase3",
-      "title": "Generate the 4 missing manuscript figures (fig01, fig02, fig05, fig06)",
-      "user_visible_behavior": "`outputs/figures/` contains all 6 figures listed in ТЗ §4: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90 (done), fig04_cumulative_scatter (done), fig05_crps_time, fig06_cluster3_migration. PNG (300 dpi) + PDF (vector) for each. Copies under `outputs/article_assets/figures_v2/`.",
+      "title": "Generate the 3 remaining manuscript figures (fig01, fig02, fig06); fig05 retired",
+      "user_visible_behavior": "`outputs/figures/` contains 5 of the 6 figures listed in ТЗ §4: fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90 (done), fig04_cumulative_scatter (done), fig06_cluster3_migration. fig05_crps_time is formally retired (CRPS is not computed — no d_truth). PNG (300 dpi) + PDF (vector) for each. Copies under `outputs/article_assets/figures_v2/`.",
       "status": "not_started",
       "verification": [
         "fig01_pipeline.{png,pdf} — block diagram of the pipeline (Phase 0..3). Use matplotlib + simple shapes, no actual data needed.",
         "fig02_qc_spread.{png,pdf} — bar chart of std_post/std_prior per θ component, generated from `outputs/qc/spread_retention.csv`.",
-        "fig05_crps_time.{png,pdf} — CRPS-vs-time curve per phase per setup. Depends on phase3-004 (need d_truth from val slice).",
-        "fig06_cluster3_migration.{png,pdf} — static export of the per-cluster centroid migration plot; data from `outputs/qc/cluster_migration.csv` (or convert the existing `outputs/qc/cluster3_diagnostic.html` to static PNG).",
-        "All four exist at 300 dpi PNG + vector PDF under `outputs/figures/` AND `outputs/article_assets/figures_v2/`.",
+        "fig06_cluster3_migration.{png,pdf} — static matplotlib export of the per-cluster centroid migration; data from `outputs/qc/cluster_migration.csv` (replaces the existing Plotly HTML for the manuscript).",
+        "All three exist at 300 dpi PNG + vector PDF under `outputs/figures/` AND `outputs/article_assets/figures_v2/`.",
+        "fig05_crps_time is retired — the manuscript's figure list drops from 6 to 5. Document the retirement in the figure caption section.",
         "Add `tests/test_figures.py` that asserts each file exists and is non-empty after `cmp-ensemble figures` runs."
       ],
       "evidence": [],
-      "notes": "fig05 is blocked by phase3-004 (no d_truth → no CRPS). fig01/02/06 can be built immediately. fig06 can also be generated as a clean replacement for the Plotly HTML (matplotlib in vector PDF for the article)."
+      "notes": "All three remaining figures are unblocked since d_truth is no longer required for any of them."
     },
     {
       "id": "phase3-007-report-html",
@@ -492,14 +493,13 @@
       "id": "phase3-008-evaluation-mode-stamp",
       "priority": 24,
       "area": "phase3",
-      "title": "Stamp `evaluation_mode` on every Phase-3 artefact",
-      "user_visible_behavior": "Every CSV / TeX / figure under `outputs/forecast/` and `outputs/figures/` carries an `evaluation_mode` field in its sidecar (`*.meta.yaml`) — one of `no_truth_baseline_only`, `train_val_hindcast_6+2`, or `forecast_vs_truth`. Readers can tell at a glance which artefacts are honest forecasts and which are not.",
+      "title": "Stamp `evaluation_mode: forecast_no_truth_ensemble_comparison` on every Phase-3 artefact",
+      "user_visible_behavior": "Every CSV / TeX / figure under `outputs/forecast/` and `outputs/figures/` carries an `evaluation_mode` field in its sidecar (`*.meta.yaml`). The only valid value for this project is `forecast_no_truth_ensemble_comparison`: ablation is judged by inter-setup differences (width_ratio, median_shift), not by accuracy against truth.",
       "status": "not_started",
       "verification": [
-        "Extend `src/cmp_ensemble/metadata.py` to accept and write the `evaluation_mode` key.",
-        "Existing sidecars for Phase 3 outputs back-filled with `no_truth_baseline_only` (current state).",
-        "Once phase3-004 lands, the mode flips to `train_val_hindcast_6+2`.",
-        "Once the user runs forecast tNavigator (clarification #1), the mode flips to `forecast_vs_truth`."
+        "Extend `src/cmp_ensemble/metadata.py` to accept and write the `evaluation_mode` key with the fixed value above.",
+        "Existing sidecars for Phase 3 outputs back-filled.",
+        "Document in `docs/methodology.md` (docs-001) why this mode is the final state, not a stopgap."
       ],
       "evidence": [],
       "notes": "Honesty about the evaluation regime is required by the project's 'never lie about results' rule."
@@ -538,17 +538,16 @@
       "id": "tests-001-coverage",
       "priority": 31,
       "area": "tests",
-      "title": "Author the four missing unit-test files (test_metrics, test_setups, test_split, test_selection)",
-      "user_visible_behavior": "`pytest -q` includes the four new test modules; total passes is at least 40.",
+      "title": "Author the three missing unit-test files (test_metrics, test_setups, test_selection); test_split retired with phase3-004",
+      "user_visible_behavior": "`pytest -q` includes the three new test modules.",
       "status": "not_started",
       "verification": [
-        "`tests/test_metrics.py` — CRPS(δ_y, y)=0; CRPS(Uniform[0,w], y∈[0,w])=w/12 within 1e-9; coverage of a known truth; width_ratio sanity.",
-        "`tests/test_setups.py` — three setups parse from YAML; setup3 degrades to setup2 when workflow controls absent.",
-        "`tests/test_split.py` — train/val split returns the right shapes and no leakage (depends on phase3-004).",
+        "`tests/test_metrics.py` — width_ratio = 1 when post == prior; median_shift = 0 when post == prior; CRPS(δ_y, y)=0 (covers dormant code path); CRPS(Uniform[0,w], y∈[0,w])=w/12 within 1e-9.",
+        "`tests/test_setups.py` — three setups parse from YAML; setup3 degrades to setup2 when workflow controls absent (logs a warning).",
         "`tests/test_selection.py` — Mahalanobis ranking returns highest Δz first; planner partitions IDs."
       ],
       "evidence": [],
-      "notes": "Together with scaffold-002 (integration test), this closes ТЗ §9 test coverage."
+      "notes": "`tests/test_split.py` retired together with phase3-004."
     },
     {
       "id": "tracker-001-reconcile",

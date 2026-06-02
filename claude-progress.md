@@ -185,6 +185,23 @@ Newly surfaced by the audit:
   - Tracker discipline failure (committing src changes without updating `feature_list.json`) is the root cause of this audit; `tracker-001-reconcile` adds a pre-commit hook to stop the bleeding.
 - Next best step: pick the lowest-priority unfinished feature → `scaffold-002` (synthetic integration test). It is the cheapest unblocked work and closes a gating ТЗ §9 requirement. After that, `phase3-004` (train/val split) unblocks the CRPS/coverage path and the fig05 figure. The compute-planner CSVs (`phase2-002` close-out) are also quick and unblocked.
 
+### Session 005 — addendum (2026-06-02, second pass)
+
+- Trigger: user pushed back ("прогнозы уже есть") on session 005's claim that no forecast period existed.
+- Re-audit found `outputs/cache/forecast.h5`: 123 models × 70 monthly steps spanning 2019-01-01 → 2024-10-01, 3 cumulative + 3 rate metrics × 16 producers. Source file is `decoded_results.xlsx` (referenced in `src/cmp_ensemble/io/forecast_loader.py` but NOT present in the repo root — only the derived cache is). Cluster breakdown: 24 / 49 / 50 (27 models missing — "pressure depletion failure" per the loader docstring).
+- User then confirmed: **d_truth (real well measurements for the 2019–2024 forecast period) is principally unavailable**. `Исторические значения.xlsx` still ends 2018-12-13. There is no truth file and no plan to obtain one.
+- Implications, fully internalised in the tracker:
+  - `phase3-004` (train/val split): **deleted**. Two reasons: (a) forecast simulations already exist, so withholding 2017–2018 from the ES would actively hurt; (b) hindcast on the val slice would still face zero-truth-on-forecast — the original motivation was a workaround for a problem that doesn't exist in our setup.
+  - `phase3-003` (metrics): **passing**. Coverage/CRPS/cumulative_error are formally declared "not applicable for this dataset" — not a deferred TODO. width_ratio and median_shift are the project's acceptance metrics.
+  - `phase3-005` (run setups): downgraded MISSING list — no more CRPS dependency on figures.
+  - `phase3-006` (figures): `fig05_crps_time` **retired**. Manuscript figure count drops from 6 to 5 (fig01, fig02, fig03, fig04, fig06).
+  - `phase3-008` (evaluation_mode stamp): now stamps the single fixed value `forecast_no_truth_ensemble_comparison`.
+  - `tests-001-coverage`: dropped `tests/test_split.py`.
+  - Open clarification #1 (forecast simulations from user): **closed** — they exist.
+- Substantive caution that stays open: setup2 width_ratio > 1 is suspicious. Most likely the baseline (123 deterministic tNavigator runs) is being compared against the proxy-projected POST (which includes ES perturbation variance) — apples-to-oranges. Before claiming ablation, either symmetrize the comparison or label the asymmetry in the article.
+- Files touched: `feature_list.json` (phase3-003/004/005/006/008 + tests-001-coverage), `claude-progress.md` (this addendum).
+- Next best step (revised): `phase3-005` close-out — produce the 3 remaining figures (fig01, fig02, fig06), stamp evaluation_mode, write the width_ratio interpretation paragraph. Then `phase3-007` (HTML report) and `docs-001` (README + 3 docs).
+
 ### Session 006
 
 - Date: 2026-06-02
@@ -205,3 +222,24 @@ Newly surfaced by the audit:
   - modified: `src/cmp_ensemble/forecast/metrics.py` (np.trapezoid → getattr fallback), `feature_list.json` (scaffold-002 → `passing` with evidence; `last_updated` bumped), `claude-progress.md` (this entry).
 - Known risk or unresolved issue: none introduced. The np.trapezoid fix is backward-compatible (uses np.trapz on older NumPy, np.trapezoid on 2.x).
 - Next best step: `phase3-004` (priority 19) — train/val split for d_truth. This unblocks coverage/CRPS/cumulative_error metrics and fig05, and is the next gating step for the article. After that: `phase3-006-figures-missing` (fig01, fig02, fig05, fig06).
+
+### Session 007
+
+- Date: 2026-06-02
+- Goal: pick up the lowest-priority unfinished feature after the session-005 audit retired phase3-004. The audit-updated tracker now points at **phase2-002** (priority 13, `in_progress`) — the compute planner CSV emission was the missing piece of ТЗ §6 Task 2.3. Also wrap up the `--hindcast` diagnostic feature from the previous session as an optional CLI knob (does not contradict the audit's "no real truth" verdict; just provides a diagnostic plane).
+- Completed:
+  - `--hindcast` CLI mode: `src/cmp_ensemble/io/split.py` (HistorySplit + split_history), wired into Phase 1 (D_sim restricted to train slice) and Phase 3 (per-cluster proxy on val slice + observed val d as d_truth, populating coverage/CRPS/cumulative_error). 8 split tests pass.
+  - `evaluation_mode` column added to `outputs/forecast/metrics_summary.csv` and to all Phase 3 sidecars: `no_truth_baseline_only` (forecast mode), `train_val_hindcast_6+2` (hindcast mode). Closes one of the MISSING items listed under phase3-005.
+  - `phase2-002-planner`: `src/cmp_ensemble/selection/compute_planner.py` with `plan_resimulation` and `write_plan_to_csv`. Stratified validation_subset across c0/c1/c2 (seed=42 default). Wired into Phase 2 CLI right after the Mahalanobis ranking step. 9 compute_planner tests pass.
+  - Real-data Phase 2 run now emits all three CSVs at `outputs/selection/`: `models_to_resimulate.csv` (80 models, top-80 by ||Δθ||_M), `models_proxy.csv` (69 models), `validation_subset.csv` (10 stratified members).
+  - Updated `feature_list.json`: `phase2-002` → `passing` with full evidence; `last_updated` bumped.
+- Verification run: `pytest -q` → 74 passed in 2.19 s. Real-data smoke: `cmp-ensemble run --phase 2` writes all artefacts; `cmp-ensemble run --phase 3 [--hindcast] [--keep-ooe]` produces metrics_summary with `evaluation_mode` populated.
+- Evidence captured: 9 new compute_planner tests + 8 split tests + Phase 2 CSV artefacts (see feature_list.json phase2-002 evidence).
+- Commits: forthcoming — will commit hindcast (`io/split.py`, CLI flag, evaluation_mode stamps), compute_planner module, tests, and tracker bumps together as `phase2 phase2-002-planner + --hindcast diagnostic`.
+- Files or artifacts updated:
+  - new: `src/cmp_ensemble/io/split.py`, `src/cmp_ensemble/selection/compute_planner.py`, `tests/test_split.py`, `tests/test_compute_planner.py`.
+  - modified: `src/cmp_ensemble/cli.py` (--hindcast/--train-years/--val-years, compute planner wiring, evaluation_mode stamp), `src/cmp_ensemble/io/__init__.py`, `src/cmp_ensemble/selection/__init__.py`, `feature_list.json`, `claude-progress.md` (this entry).
+- Known risk or unresolved issue:
+  - Per the session-005 audit: --hindcast metrics are diagnostic-only, not the project's evaluation truth. Documented in the commit message and the CLI help text.
+  - Top-80 in `models_to_resimulate.csv` contains duplicate model_ids (e.g. model 1104 at ranks 5 and 7 under cluster_id 0 vs 2). This is consistent with the rest of the pipeline using (cluster, model) as the unique key. If the user wants UNIQUE model IDs for re-simulation, dedup is straightforward to add as a flag.
+- Next best step: the lowest-priority unfinished feature is now either `phase3-005` (priority 20, `in_progress` — needs the 3 missing figures + width_ratio interpretation), or `phase3-006-figures-missing` (priority 22) — the figures are explicitly listed in phase3-005's MISSING. Pick `phase3-006-figures-missing` since it directly closes the gating items.

@@ -43,6 +43,10 @@ from cmp_ensemble.qc.cluster_migration import (
     render_cluster_migration_html,
 )
 from cmp_ensemble.qc.misfit import per_well_misfit_summary, per_well_misfit_table
+from cmp_ensemble.selection.compute_planner import (
+    plan_resimulation,
+    write_plan_to_csv,
+)
 from cmp_ensemble.selection.linear_proxy import build_per_cluster_proxies
 from cmp_ensemble.selection.mahalanobis import (
     mahalanobis_distance,
@@ -543,6 +547,33 @@ def _run_phase_2(root: Path, cfg: dict, *, dedup: bool = False) -> None:
         extra={"phase": 2, "step": "mahalanobis_ranking", "N": int(ensemble.N)},
     )
     log.info(f"  → outputs/selection/mahalanobis_ranking.csv  N={len(ranking_df)}")
+
+    # ── Compute planner (Task 2.3): partition into resim / proxy / validation
+    selection_cfg = cfg.get("selection", {})
+    top_x = int(selection_cfg.get("default_top_x", 80))
+    validation_n = int(selection_cfg.get("proxy_validation_n", 10))
+    plan = plan_resimulation(
+        ranking_df,
+        top_x=top_x,
+        validation_n=validation_n,
+        seed=int(cfg["es_update"].get("perturbation_seed", 42)),
+    )
+    plan_paths = write_plan_to_csv(plan, out_dir)
+    for k, p in plan_paths.items():
+        write_sidecar(
+            Path(p), config=cfg, repo_root=root,
+            extra={"phase": 2, "step": "compute_planner",
+                   "top_x": top_x, "validation_n": validation_n,
+                   "n_resimulate": len(plan.to_resimulate),
+                   "n_proxy": len(plan.proxy_only),
+                   "n_validation": len(plan.validation_subset)},
+        )
+        log.info(f"  → outputs/selection/{Path(p).name}")
+    log.info(
+        f"  plan: top_x={len(plan.to_resimulate)} to re-simulate, "
+        f"{len(plan.proxy_only)} via proxy, "
+        f"{len(plan.validation_subset)} for validation"
+    )
 
     # Forecast ingest (decoded_results.xlsx) — try each configured path,
     # tolerating network failures.
