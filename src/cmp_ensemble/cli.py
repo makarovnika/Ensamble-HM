@@ -27,6 +27,7 @@ from cmp_ensemble.forecast.setups import (
     run_setup3_full,
 )
 from cmp_ensemble.io.forecast_loader import load_tnav_forecast
+from cmp_ensemble.io.split import split_history
 from cmp_ensemble.metadata import write_sidecar
 from cmp_ensemble.viz.ablation import (
     build_latex_ablation_table,
@@ -115,6 +116,27 @@ def cli(log_level: str) -> None:
     default=False,
     help="In Phase 3, keep out-of-envelope proxy predictions in setup2/3.",
 )
+@click.option(
+    "--hindcast",
+    is_flag=True,
+    default=False,
+    help="Use the train/val split for an honest hindcast: ES on the train slice, "
+    "Phase 3 metrics on the val slice with d_truth = observed values.",
+)
+@click.option(
+    "--train-years",
+    type=int,
+    default=6,
+    show_default=True,
+    help="Number of leading calendar years to use as training history under --hindcast.",
+)
+@click.option(
+    "--val-years",
+    type=int,
+    default=2,
+    show_default=True,
+    help="Number of trailing calendar years to hold out as validation under --hindcast.",
+)
 def run(
     phase: str,
     no_cache: bool,
@@ -125,6 +147,9 @@ def run(
     clip_to_prior: bool,
     dedup_ensemble: bool,
     keep_ooe: bool,
+    hindcast: bool,
+    train_years: int,
+    val_years: int,
 ) -> None:
     """Run one or more pipeline phases."""
     root = project_root()
@@ -137,6 +162,9 @@ def run(
         "variant_label": variant_label,
         "clip_to_prior": clip_to_prior,
         "dedup_ensemble": dedup_ensemble,
+        "hindcast": hindcast,
+        "train_years": train_years,
+        "val_years": val_years,
     }
 
     if phase in ("0", "all"):
@@ -146,7 +174,7 @@ def run(
     if phase in ("2", "all"):
         _run_phase_2(root, cfg, dedup=dedup_ensemble)
     if phase in ("3", "all"):
-        _run_phase_3(root, cfg, keep_ooe=keep_ooe)
+        _run_phase_3(root, cfg, keep_ooe=keep_ooe, overrides=overrides)
 
 
 def _run_phase_0(root: Path, cfg: dict, *, use_cache: bool) -> None:
@@ -260,8 +288,38 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
     )
 
     # Build d arrays for the requested mode
-    D_sim, d_obs, C_dd, _index = build_d(ensemble, obs, d_obs_type)
+    D_sim, d_obs, C_dd, d_index = build_d(ensemble, obs, d_obs_type)
     log.info(f"  D_sim shape={D_sim.shape}, d_obs shape={d_obs.shape}")
+
+    # Hindcast: restrict ES to the train slice and remember the val slice
+    # for Phase 3 d_truth.
+    hindcast_split = None
+    if overrides.get("hindcast"):
+        ty = int(overrides.get("train_years", 6))
+        vy = int(overrides.get("val_years", 2))
+        hindcast_split = split_history(
+            rate_index=ensemble.rate_index,
+            cum_index=ensemble.cum_index,
+            time_steps=ensemble.time_steps,
+            train_years=ty, val_years=vy,
+        )
+        if d_obs_type == "cumulative":
+            train_mask = hindcast_split.train_cum_mask
+        elif d_obs_type == "rates":
+            train_mask = hindcast_split.train_rate_mask
+        else:  # hybrid = cum_index then rate_index — concatenate masks
+            train_mask = np.concatenate(
+                [hindcast_split.train_cum_mask, hindcast_split.train_rate_mask]
+            )
+        D_sim = D_sim[:, train_mask]
+        d_obs = d_obs[train_mask]
+        C_dd = C_dd[np.ix_(train_mask, train_mask)]
+        d_index = [e for e, keep in zip(d_index, train_mask) if keep]
+        log.info(
+            f"  HINDCAST: train years {hindcast_split.train_years}, "
+            f"val years {hindcast_split.val_years}; "
+            f"D_sim restricted to train slice → shape={D_sim.shape}"
+        )
 
     # Localization
     factor = es_cfg["localization_threshold_factor"]
@@ -367,13 +425,10 @@ def _run_phase_1(root: Path, cfg: dict, *, overrides: dict | None = None) -> dic
     migration_table.to_csv(qc_dir / "cluster_migration.csv", index=False, encoding="utf-8")
     render_cluster_migration_html(migration_table, qc_dir / "cluster3_diagnostic.html")
 
-    # Per-well misfit diagnostic (improve-E)
-    if d_obs_type in ("cumulative",):
-        misfit_index = ensemble.cum_index
-    elif d_obs_type in ("rates",):
-        misfit_index = ensemble.rate_index
-    else:  # hybrid → cumulative section only for clarity
-        misfit_index = ensemble.cum_index
+    # Per-well misfit diagnostic (improve-E) — use the SAME index as was fed
+    # into the ES update so the shapes match (especially under --hindcast,
+    # where d_index is the train-slice subset).
+    misfit_index = d_index
     misfit = per_well_misfit_table(d_obs, D_sim, misfit_index)
     p_misfit = qc_dir / "per_well_misfit.csv"
     p_misfit_summary = qc_dir / "per_well_misfit_summary.csv"
@@ -647,19 +702,27 @@ def _run_phase_2(root: Path, cfg: dict, *, dedup: bool = False) -> None:
     log.info(f"  Posterior-θ predictions: {ensemble.N - n_oo}/{ensemble.N} in-envelope")
 
 
-def _run_phase_3(root: Path, cfg: dict, *, keep_ooe: bool = False) -> None:
+def _run_phase_3(
+    root: Path,
+    cfg: dict,
+    *,
+    keep_ooe: bool = False,
+    overrides: dict | None = None,
+) -> None:
+    overrides = overrides or {}
+    hindcast_mode = bool(overrides.get("hindcast"))
     log.info("=" * 60)
     log.info("PHASE 3 — ablation forecast (setup1 / setup2 / setup3)")
     log.info("=" * 60)
-    log.info(f"  keep_ooe={keep_ooe} (whether to retain out-of-envelope proxy predictions)")
+    log.info(f"  keep_ooe={keep_ooe}, hindcast={hindcast_mode}")
 
+    paths = cfg["io"]["paths"]
     forecast_cache = root / cfg["io"]["cache_dir"] / "forecast.h5"
-    if not forecast_cache.exists():
+    if not hindcast_mode and not forecast_cache.exists():
         log.error(
             "outputs/cache/forecast.h5 not present. Run `cmp-ensemble run --phase 2` first."
         )
         return
-    paths = cfg["io"]["paths"]
     cache_path = root / cfg["io"]["cache_dir"] / "ensemble.h5"
     ensemble = load_tnav_ensemble(
         parameters_path=root / paths["parameters"],
@@ -667,71 +730,126 @@ def _run_phase_3(root: Path, cfg: dict, *, keep_ooe: bool = False) -> None:
         cache_path=cache_path,
         use_cache=True,
     )
-    # Reconstruct seed_to_model mapping for the forecast cache reload
-    cluster_seed_to_model_id = {
-        (int(cid), int(s)): int(mid)
-        for s, mid, cid in zip(ensemble.seeds, ensemble.model_ids, ensemble.cluster_ids)
-    }
-    # Decoded forecast workbook (used if cache is stale; otherwise cache wins)
-    decoded_path = None
-    for raw in cfg["io"].get("forecast_paths", []):
-        candidate = (root / raw) if not raw.startswith("//") else Path(raw)
-        try:
-            if candidate.exists():
-                decoded_path = candidate
-                break
-        except OSError:
-            continue
-    forecast = load_tnav_forecast(
-        decoded_path=decoded_path or Path("__missing__"),
+    # Load observations for hindcast d_truth (regardless of mode)
+    obs = load_observations(
+        history_path=root / paths["history"],
+        noise_spec=load_noise_spec(root),
         producer_wells=ensemble.producer_wells,
-        cluster_seed_to_model_id=cluster_seed_to_model_id,
-        cache_path=forecast_cache,
-        use_cache=True,
+        injector_wells=ensemble.injector_wells,
+        rate_index=ensemble.rate_index,
+        cum_index=ensemble.cum_index,
     )
-    log.info(f"baseline forecast: M={forecast.model_ids.size}, cluster counts: "
-             + ", ".join(f"c{cl}={(forecast.cluster_ids == cl).sum()}"
-                          for cl in sorted(set(forecast.cluster_ids.tolist()))))
 
-    # Phase 2 proxy predictions
-    proxy_path = root / "outputs" / "selection" / "d_forecast_post_via_proxy.npy"
-    oo_path = root / "outputs" / "selection" / "d_forecast_post_out_of_envelope.npy"
-    if not proxy_path.exists() or not oo_path.exists():
-        log.error("Phase 2 artefacts missing. Run `cmp-ensemble run --phase 2` first.")
-        return
-    d_proxy = np.load(proxy_path)
-    out_of_envelope = np.load(oo_path)
+    # ── Branch: hindcast mode vs forecast mode ────────────────────────────
+    if hindcast_mode:
+        # Build a per-cluster proxy here in Phase 3 (we can't reuse the Phase 2
+        # forecast proxy because that one was trained on 2019-2024 forecast,
+        # not on the held-out val slice).
+        ty = int(overrides.get("train_years", 6))
+        vy = int(overrides.get("val_years", 2))
+        split = split_history(
+            rate_index=ensemble.rate_index,
+            cum_index=ensemble.cum_index,
+            time_steps=ensemble.time_steps,
+            train_years=ty, val_years=vy,
+        )
+        log.info(f"  HINDCAST split: train {split.train_years} → val {split.val_years}")
+        d_baseline_val = ensemble.d_sim_cum[:, split.val_cum_mask]  # (149, n_d_val)
+        d_truth_val = obs.d_obs_cum[split.val_cum_mask]              # (n_d_val,)
+        index = [e for e, keep in zip(ensemble.cum_index, split.val_cum_mask) if keep]
+        cluster_ids_baseline = ensemble.cluster_ids
+        cluster_ids_proxy = ensemble.cluster_ids
+        log.info(
+            f"  baseline (val slice): shape={d_baseline_val.shape}, "
+            f"d_truth shape={d_truth_val.shape}"
+        )
 
-    # Align: proxy predictions have 149 rows (one per ensemble member), with
-    # cluster_ids from ensemble. The forecast baseline has 123 rows with its
-    # own cluster_ids.
-    cluster_ids_proxy = ensemble.cluster_ids
-    cluster_ids_baseline = forecast.cluster_ids
-    index = forecast.cum_index   # both use cum index ordering
+        # Train a per-cluster proxy on (θ_prior, d_baseline_val) so we can
+        # project ES-updated θ_post onto the val slice.
+        from cmp_ensemble.selection.linear_proxy import build_per_cluster_proxies
+        proxies = build_per_cluster_proxies(
+            ensemble.theta, d_baseline_val, ensemble.cluster_ids
+        )
+        theta_post = np.load(root / "outputs" / "matrices" / "theta_post.npy")
+        d_proxy = np.zeros_like(d_baseline_val)
+        out_of_envelope = np.zeros(ensemble.N, dtype=bool)
+        for i in range(ensemble.N):
+            cl = int(ensemble.cluster_ids[i])
+            proxy = proxies.get(cl)
+            if proxy is None:
+                d_proxy[i] = np.nan
+                out_of_envelope[i] = True
+                continue
+            d_proxy[i] = proxy.predict(theta_post[i])
+            out_of_envelope[i] = not proxy.in_envelope(theta_post[i])
+        d_baseline_for_setups = d_baseline_val
+        evaluation_mode = f"train_val_hindcast_{ty}+{vy}"
+        d_truth_for_metrics = d_truth_val
+    else:
+        # Reconstruct seed_to_model mapping for the forecast cache reload
+        cluster_seed_to_model_id = {
+            (int(cid), int(s)): int(mid)
+            for s, mid, cid in zip(ensemble.seeds, ensemble.model_ids, ensemble.cluster_ids)
+        }
+        decoded_path = None
+        for raw in cfg["io"].get("forecast_paths", []):
+            candidate = (root / raw) if not raw.startswith("//") else Path(raw)
+            try:
+                if candidate.exists():
+                    decoded_path = candidate
+                    break
+            except OSError:
+                continue
+        forecast = load_tnav_forecast(
+            decoded_path=decoded_path or Path("__missing__"),
+            producer_wells=ensemble.producer_wells,
+            cluster_seed_to_model_id=cluster_seed_to_model_id,
+            cache_path=forecast_cache,
+            use_cache=True,
+        )
+        log.info(f"baseline forecast: M={forecast.model_ids.size}, cluster counts: "
+                 + ", ".join(f"c{cl}={(forecast.cluster_ids == cl).sum()}"
+                              for cl in sorted(set(forecast.cluster_ids.tolist()))))
+        proxy_path = root / "outputs" / "selection" / "d_forecast_post_via_proxy.npy"
+        oo_path = root / "outputs" / "selection" / "d_forecast_post_out_of_envelope.npy"
+        if not proxy_path.exists() or not oo_path.exists():
+            log.error("Phase 2 artefacts missing. Run `cmp-ensemble run --phase 2` first.")
+            return
+        d_proxy = np.load(proxy_path)
+        out_of_envelope = np.load(oo_path)
+        cluster_ids_baseline = forecast.cluster_ids
+        cluster_ids_proxy = ensemble.cluster_ids
+        index = forecast.cum_index
+        d_baseline_for_setups = forecast.d_forecast_cum
+        evaluation_mode = "no_truth_baseline_only"
+        d_truth_for_metrics = None
+    # ─────────────────────────────────────────────────────────────────────
 
     # Run setups
     s1 = run_setup1_naive(
-        d_baseline=forecast.d_forecast_cum,
+        d_baseline=d_baseline_for_setups,
         index=index,
         cluster_ids=cluster_ids_baseline,
-        d_truth=None,
+        d_truth=d_truth_for_metrics,
     )
     s2 = run_setup2_localized(
-        d_baseline=forecast.d_forecast_cum,
+        d_baseline=d_baseline_for_setups,
         d_proxy_post=d_proxy,
         index=index,
         cluster_ids_baseline=cluster_ids_baseline,
         cluster_ids_proxy=cluster_ids_proxy,
         out_of_envelope=out_of_envelope,
+        d_truth=d_truth_for_metrics,
         keep_out_of_envelope=keep_ooe,
     )
     s3 = run_setup3_full(
-        d_baseline=forecast.d_forecast_cum,
+        d_baseline=d_baseline_for_setups,
         d_proxy_post=d_proxy,
         index=index,
         cluster_ids_baseline=cluster_ids_baseline,
         cluster_ids_proxy=cluster_ids_proxy,
         out_of_envelope=out_of_envelope,
+        d_truth=d_truth_for_metrics,
         controls_available=False,
         keep_out_of_envelope=keep_ooe,
     )
@@ -748,15 +866,22 @@ def _run_phase_3(root: Path, cfg: dict, *, keep_ooe: bool = False) -> None:
         ft = field_total_quantiles(r.d_forecast, r.index)
         p_ft = out_dir / f"{r.label}_field_total_quantiles.csv"
         ft.to_csv(p_ft, index=False, encoding="utf-8")
-        write_sidecar(p_ft, config=cfg, repo_root=root,
-                      extra={"phase": 3, "setup": r.label, "M": int(r.d_forecast.shape[0])})
+        write_sidecar(
+            p_ft, config=cfg, repo_root=root,
+            extra={"phase": 3, "setup": r.label, "M": int(r.d_forecast.shape[0]),
+                   "evaluation_mode": evaluation_mode},
+        )
         log.info(f"  → outputs/forecast/{p_ft.name} ({len(ft)} rows)")
 
-    # Summary table
+    # Summary table — stamp evaluation_mode in a leading column too.
     summary = build_metrics_summary(results)
+    summary.insert(0, "evaluation_mode", evaluation_mode)
     p_sum = out_dir / "metrics_summary.csv"
     summary.to_csv(p_sum, index=False, encoding="utf-8")
-    write_sidecar(p_sum, config=cfg, repo_root=root, extra={"phase": 3})
+    write_sidecar(
+        p_sum, config=cfg, repo_root=root,
+        extra={"phase": 3, "evaluation_mode": evaluation_mode},
+    )
     log.info(f"  → outputs/forecast/metrics_summary.csv")
     log.info(f"\n{summary.to_string(index=False)}")
 
