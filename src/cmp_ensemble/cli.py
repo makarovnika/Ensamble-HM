@@ -40,6 +40,7 @@ from cmp_ensemble.viz.diagnostics import (
     fig06_cluster3_migration,
     mirror_to_article_assets,
 )
+from cmp_ensemble.viz.tier_b import render_all_tier_b
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -1029,6 +1030,14 @@ def figures_cmd() -> None:
             log.info(f"  ✓ {p.relative_to(root)} (kept from previous Phase 3 run)")
         else:
             log.warning(f"  ✗ {p.relative_to(root)} missing — run `--phase 3` to regenerate")
+
+    # ── Tier B diagnostic figures (viz-002)
+    log.info("  rendering Tier B diagnostic figures …")
+    tier_b_done = render_all_tier_b(root)
+    for name, p in tier_b_done.items():
+        write_sidecar(p, config=cfg, repo_root=root,
+                      extra={"figure": name, "tier": "B"})
+    log.info(f"  Tier B: {len(tier_b_done)} figures under outputs/qc/figures/")
 
     # Mirror everything into article_assets/figures_v2/
     article_dir = root / "outputs" / "article_assets" / "figures_v2"

@@ -9,6 +9,7 @@ from cmp_ensemble.viz.diagnostics import (
     fig06_cluster3_migration,
     mirror_to_article_assets,
 )
+from cmp_ensemble.viz.tier_b import render_all_tier_b
 
 __all__ = [
     "build_latex_ablation_table",
@@ -18,4 +19,5 @@ __all__ = [
     "fig04_cumulative_scatter",
     "fig06_cluster3_migration",
     "mirror_to_article_assets",
+    "render_all_tier_b",
 ]

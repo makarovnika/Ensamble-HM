@@ -356,6 +356,35 @@ Newly surfaced by the audit:
 
 (Session 005 entry above was truncated mid-line by a prior editor save — content captured in `feature_list.json` reconciliation done in same session. Skip to session 006 for current state.)
 
+### Session 016 — viz-002 Tier B diagnostic figures (2026-06-03)
+
+- Date: 2026-06-03
+- Goal: close `viz-002-tier-b-diagnostic` (priority 26) — 8 diagnostic figures per `docs/visualization_plan.md` Tier B spec. Continuation of «идём по порядку» after viz-005.
+- Completed:
+  - `src/cmp_ensemble/viz/tier_b.py` (~370 lines) with 8 figure builders + a fault-tolerant `render_all_tier_b(root)` dispatcher:
+    - **B1 qc_singular_spectrum** — semilogy from `outputs/matrices/singular_values.npy` with dashed red vertical at the 99 %-energy cutoff. Real-data run: sharp drop near component ≈ 100 (rank cliff visible).
+    - **B2 qc_locmask_heatmap** — Greens-colormap binary mask of `locmask.npy` (9×384) with 3 vertical block separators labelled Накопл. нефть / вода / газ; title reports kept-fraction.
+    - **B3 qc_mahalanobis_distribution** — KDE + transparent histogram per cluster overlaid; re-attaches cluster ids from `cluster_ids.npy` when the migration CSV lacks them.
+    - **B4 qc_per_well_misfit_heatmap** — pivoted `residual_z` by (metric · well) × time, RdBu_r diverging center 0, clipped at ±10.
+    - **B5 qc_theta_pairgrid** — seaborn corner pairplot of 9 params with prior (grey) vs posterior (red) overlaid; KDE diagonals.
+    - **B6 qc_proxy_validation_scatter** — `median_rel_err` per held-out validation member, jittered by cluster; horizontal references at PASS (1.0) and FAIL (2.0) thresholds.
+    - **B7 qc_forecast_per_well** — 4×4 small multiples per producer, forecast cumulative trajectories from `forecast.h5`, cluster-coloured.
+    - **B8 qc_history_match_quality** — 3-panel field-total cum oil / water / gas; ensemble cloud (thin blue) + d_sim median (dashed dark) + d_obs (red with markers).
+  - Wired into `cmp-ensemble figures` after the Tier A block; each Tier B PNG gets a sidecar `*.meta.yaml` via `write_sidecar`. Dispatcher skips missing inputs with a WARNING (resilient).
+  - Cluster palette unified with `docs/visualization_plan.md` Tier B section: cluster 0 = `#1f77b4`, 1 = `#ff7f0e`, 2 = `#2ca02c` (Tab-10). Posterior red = `#d62728`, prior grey = `#7f7f7f`.
+  - Tier B intentionally renders at **120 dpi** (HTML embedding); Tier A stays at 300 dpi (manuscript).
+  - `tests/test_tier_b.py` — 11 tests against synthetic data: per-figure non-empty PNG (≥ 5 KB), per-figure schema rejection (missing residual_z, mismatched cluster_ids), dispatcher resilience (empty outputs/ → empty result, no crash).
+  - Minor polish: replaced unicode subscript `σₖ` with mathtext `$\sigma_k$` in B1 to silence a Matplotlib font warning.
+- Verification run: `pytest -q` → **191 passed + 1 skipped** in 7.64 s (was 179; +11 from tier_b + 1 from B1 polish).
+- Real-data smoke: `cmp-ensemble figures` produces all 8 Tier B PNGs under `outputs/qc/figures/`, sizes ranging ~50–600 KB. Spectrum (B1) inspected — shows expected rank cliff around index 100 with the 99%-energy cutoff at r=16.
+- Evidence captured: see `feature_list.json` `viz-002-tier-b-diagnostic.evidence`.
+- Commits: forthcoming — `viz viz-002: 8 Tier B diagnostic figures + dispatcher + 11 tests`.
+- Files or artifacts updated:
+  - new: `src/cmp_ensemble/viz/tier_b.py`, `tests/test_tier_b.py`.
+  - modified: `src/cmp_ensemble/cli.py` (Tier B wiring in `figures` subcommand), `src/cmp_ensemble/viz/__init__.py` (export `render_all_tier_b`), `feature_list.json` (viz-002 → passing, last_updated), `claude-progress.md` (this entry).
+- Known risk or unresolved issue: none. Tier B figures are not currently embedded in `outputs/qc/qc_report.html` — they're rendered alongside but the report template still inlines only fig02 and fig06. Embedding 8 more PNGs in the QC report is a small follow-up (~30 min) but was not in viz-002 scope.
+- Next best step: only `viz-003-tier-c-interactive` (priority 27 — 2 plotly interactives) + `phase4-stub` (priority 99, out of scope) + STOPs remain. Continue with viz-003 if going «по порядку».
+
 ### Session 015 — viz-005 figure captions (2026-06-02)
 
 - Date: 2026-06-02

@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 015 — viz-005 closed: docs/figure_captions.md + 15-test discipline gate; 179 tests + 1 skip)",
+  "last_updated": "2026-06-03 (session 016 — viz-002 closed: 8 Tier B diagnostic figures + dispatcher + 11 tests; 191 tests + 1 skip)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -815,22 +815,29 @@
       "priority": 26,
       "area": "viz",
       "title": "Tier B — 8 diagnostic figures for the HTML QC report",
-      "user_visible_behavior": "`outputs/qc/figures/qc_*.png` exist for: singular_spectrum, locmask_heatmap, mahalanobis_distribution, per_well_misfit_heatmap, theta_pairgrid, proxy_validation_scatter, forecast_per_well, history_match_quality.",
-      "status": "not_started",
+      "user_visible_behavior": "`outputs/qc/figures/qc_*.png` (8 figures, 120 dpi) regenerable via `cmp-ensemble figures`. Each carries a sidecar `*.png.meta.yaml`. The `cmp-ensemble figures` subcommand renders Tier A + Tier B in one pass.",
+      "status": "passing",
       "verification": [
-        "Read `docs/visualization_plan.md` Tier B for per-figure spec.",
-        "B1 qc_singular_spectrum: log-scale spectrum from `outputs/matrices/singular_values.npy`, truncation marker at index 16.",
-        "B2 qc_locmask_heatmap: binary heatmap of `outputs/matrices/locmask.npy` (9×384) with metric block separators.",
-        "B3 qc_mahalanobis_distribution: histogram + KDE, 3 clusters overlaid, BC=0.368 annotation.",
-        "B4 qc_per_well_misfit_heatmap: 2×1 diverging heatmap prior vs posterior.",
-        "B5 qc_theta_pairgrid: seaborn PairGrid with prior (grey) + posterior (red) overlay across 9 params.",
-        "B6 qc_proxy_validation_scatter: 3-panel scatter predicted vs actual per cluster.",
-        "B7 qc_forecast_per_well: 4×4 small multiples, oil rate per well, 3 setups overlaid.",
-        "B8 qc_history_match_quality: 3-panel field-total oil/water/gas, ensemble cloud + d_obs line.",
-        "All files written under `outputs/qc/figures/`, ≤ 200 KB PNG each (use `dpi=120` for QC, manuscript-level only for Tier A)."
+        "DONE (session 016): `src/cmp_ensemble/viz/tier_b.py` with 8 figure builders + `render_all_tier_b(root)` dispatcher.",
+        "DONE: B1 qc_singular_spectrum — log-scale spectrum from `outputs/matrices/singular_values.npy`, dashed red vertical at the 99 %-energy cutoff (component 16). On real data: spectrum has a sharp drop ≈ component 100 (rank cliff), confirming the subspace truncation choice.",
+        "DONE: B2 qc_locmask_heatmap — Greens-colormap binary mask of `outputs/matrices/locmask.npy` with 3-block vertical separators labelled Накопл. нефть / вода / газ. Title shows kept-K-entries fraction.",
+        "DONE: B3 qc_mahalanobis_distribution — KDE + histogram per cluster overlaid, colour-coded by CLUSTER_COLORS (Tab-10 palette per `docs/visualization_plan.md`). Re-attaches cluster ids from `outputs/matrices/cluster_ids.npy` when the migration CSV lacks them.",
+        "DONE: B4 qc_per_well_misfit_heatmap — pivoted residual_z by (metric · well) × time, RdBu_r diverging with center=0, clipped at ±10 for readability.",
+        "DONE: B5 qc_theta_pairgrid — seaborn corner PairGrid with prior (grey #7f7f7f) vs posterior (red #d62728) overlay; KDE diagonals. Parameter names read from configs/theta_schema.yaml.",
+        "DONE: B6 qc_proxy_validation_scatter — median_rel_err per held-out validation member, jittered by cluster; dashed line at PASS threshold (1.0), dotted at FAIL (2.0).",
+        "DONE: B7 qc_forecast_per_well — 4×4 small multiples (one per producer), forecast cumulative trajectories from `outputs/cache/forecast.h5`, colour-coded by cluster.",
+        "DONE: B8 qc_history_match_quality — 3-panel field-total cum oil / water / gas from `outputs/matrices/d_sim_cum.npy` + `d_obs_cum.npy`, ensemble cloud (blue thin lines) + d_sim median (dashed dark blue) + d_obs (red with markers).",
+        "DONE: `cmp-ensemble figures` runs Tier A AND Tier B in one pass; sidecar `*.png.meta.yaml` written for each Tier B file; render_all_tier_b dispatcher is fault-tolerant (skips missing inputs with a WARNING rather than crashing).",
+        "DONE: 11 tests in `tests/test_tier_b.py` — per-figure non-empty PNG floor (5 KB), per-figure schema rejection (missing residual_z column, mismatched cluster_ids size), dispatcher resilience (empty outputs/ → empty result, no crash).",
+        "DONE: `pytest -q` → 191 passed + 1 skipped (was 179; +11 from tier_b + +1 from sigma-glyph fix)."
       ],
-      "evidence": [],
-      "notes": "Tier B intentionally uses lower DPI (file size matters for embedding in HTML). Not vector — PNG only is fine."
+      "evidence": [
+        "src/cmp_ensemble/viz/tier_b.py — 8 figure builders + render_all_tier_b dispatcher",
+        "outputs/qc/figures/qc_singular_spectrum.png + 7 more (~250-600 KB each)",
+        "outputs/qc/figures/*.png.meta.yaml — sidecars for each",
+        "tests/test_tier_b.py — 11 tests pass"
+      ],
+      "notes": "Closed in session 016. Tier B intentionally uses 120 dpi (file size matters for embedding in HTML); Tier A stays at 300 dpi (vector PDF for the manuscript). B3 cluster annotation defers to KDE legend; the BC=0.368 number stays in qc_report.html main table."
     },
     {
       "id": "viz-003-tier-c-interactive",
