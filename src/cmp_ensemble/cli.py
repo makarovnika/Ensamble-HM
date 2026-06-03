@@ -41,6 +41,7 @@ from cmp_ensemble.viz.diagnostics import (
     mirror_to_article_assets,
 )
 from cmp_ensemble.viz.tier_b import render_all_tier_b
+from cmp_ensemble.viz.tier_c import render_all_tier_c
 from cmp_ensemble.io.observations import load_observations
 from cmp_ensemble.io.tnav_loader import load_tnav_ensemble
 from cmp_ensemble.logging_setup import setup_logging
@@ -1038,6 +1039,14 @@ def figures_cmd() -> None:
         write_sidecar(p, config=cfg, repo_root=root,
                       extra={"figure": name, "tier": "B"})
     log.info(f"  Tier B: {len(tier_b_done)} figures under outputs/qc/figures/")
+
+    # ── Tier C interactive plotly (viz-003)
+    log.info("  rendering Tier C interactive figures …")
+    tier_c_done = render_all_tier_c(root)
+    for name, p in tier_c_done.items():
+        write_sidecar(p, config=cfg, repo_root=root,
+                      extra={"figure": name, "tier": "C"})
+    log.info(f"  Tier C: {len(tier_c_done)} interactive HTMLs under outputs/qc/")
 
     # Mirror everything into article_assets/figures_v2/
     article_dir = root / "outputs" / "article_assets" / "figures_v2"

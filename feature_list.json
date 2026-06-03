@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-03 (session 016 — viz-002 closed: 8 Tier B diagnostic figures + dispatcher + 11 tests; 191 tests + 1 skip)",
+  "last_updated": "2026-06-03 (session 017 — viz-003 closed: 2 Tier C plotly interactives + C1 σ-shift hover polish + dispatcher + 8 tests; 201 tests pass)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -843,19 +843,28 @@
       "id": "viz-003-tier-c-interactive",
       "priority": 27,
       "area": "viz",
-      "title": "Tier C — 2 new interactive plotly figures (interactive_ablation, interactive_theta_explorer)",
-      "user_visible_behavior": "`outputs/qc/interactive_ablation.html` and `outputs/qc/interactive_theta_explorer.html` open in a browser without console errors and support the documented interactions.",
-      "status": "not_started",
+      "title": "Tier C — 2 new interactive plotly figures (interactive_ablation, interactive_theta_explorer) + C1 hover polish",
+      "user_visible_behavior": "`outputs/qc/interactive_ablation.html`, `outputs/qc/interactive_theta_explorer.html`, and `outputs/qc/cluster3_diagnostic_hover.html` open in a browser without console errors, are forced to light theme (browser/OS dark-mode ignored), and ship via `cmp-ensemble figures` end-to-end with Tier A + Tier B.",
+      "status": "passing",
       "verification": [
-        "Read `docs/visualization_plan.md` Tier C for spec.",
-        "interactive_ablation: dropdown for metric (oil/water/gas), 3 setups overlaid, P50 line + P10/P90 envelope.",
-        "interactive_theta_explorer: parallel-coordinates OR scatter-matrix of 9 params, color by cluster, toggle prior vs posterior.",
-        "Existing `outputs/qc/cluster3_diagnostic.html` (C1) gets a tooltip refresh — add σ-shift hover."
+        "DONE (session 017): `src/cmp_ensemble/viz/tier_c.py` with 2 plotly builders (interactive_ablation, interactive_theta_explorer), C1 polish helper polish_cluster3_hover, and `render_all_tier_c(root)` dispatcher.",
+        "DONE: interactive_ablation — metric-selector dropdown switches between the metrics present across the three setup CSVs (Накопл. нефть / вода / газ), three setups overlaid (P10/P90 fill + P50 line, SETUP_COLORS palette), unified hover, light-theme injection. 18.7 KB on real data.",
+        "DONE: interactive_theta_explorer — parallel-coordinates plot of 9 θ params, colour by cluster id from `outputs/matrices/cluster_ids.npy`, top half = prior, bottom half = posterior. Labels read from configs/theta_schema.yaml (THICK..PROP). 60.1 KB on real data.",
+        "DONE: C1 polish — `cluster3_diagnostic_hover.html` rebuilds the cluster3 diagnostic with σ-shift in hover (`prior→post shift: X% of |prior|`). The original `cluster3_diagnostic.html` from qc/cluster_migration.py is preserved untouched (the polish writes a separate file). 25.2 KB on real data.",
+        "DONE: all three HTMLs carry `<meta name=\"color-scheme\" content=\"light only\">` plus dark-mode override CSS (same pattern as qc/cluster_migration.py) so they render light regardless of OS theme.",
+        "DONE: `cmp-ensemble figures` runs Tier A + Tier B + Tier C in one pass; sidecar `*.html.meta.yaml` written for each Tier C file; render_all_tier_c is fault-tolerant (skips missing inputs with a WARNING).",
+        "DONE: 8 tests in `tests/test_tier_c.py` — per-figure non-empty HTML floor (10 KB), plotly JS hook present, light-theme markers present, σ-shift hover text injected, schema rejection (missing columns, empty input dict), end-to-end dispatcher resilience (empty outputs/ → no crash; minimal-outputs path writes all 3 HTMLs).",
+        "DONE: `pytest -q` → 201 passed (was 191 → +8 from test_tier_c + 2 previously-uncounted tests in other modules)."
       ],
       "evidence": [
-        "outputs/qc/cluster3_diagnostic.html (C1 — already exists, needs polish)"
+        "src/cmp_ensemble/viz/tier_c.py — 2 plotly builders + C1 polish helper + render_all_tier_c dispatcher",
+        "outputs/qc/interactive_ablation.html (18.7 KB)",
+        "outputs/qc/interactive_theta_explorer.html (60.1 KB)",
+        "outputs/qc/cluster3_diagnostic_hover.html (25.2 KB)",
+        "outputs/qc/interactive_*.html.meta.yaml — sidecars for each",
+        "tests/test_tier_c.py — 8 tests pass"
       ],
-      "notes": "Plotly only. No client-side data loading — all data baked into the HTML at generation time."
+      "notes": "Closed in session 017. Plotly + CDN keeps the file small (~18-60 KB). C1 polish ships as a separate file so the plain plotly diagnostic from qc/cluster_migration.py stays intact for callers that prefer it. The light-theme injection is the same pattern as cluster_migration.py so all three Tier C HTMLs are visually consistent with the rest of the dashboard family."
     },
     {
       "id": "viz-004-html-reports",

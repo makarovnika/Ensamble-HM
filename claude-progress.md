@@ -356,6 +356,34 @@ Newly surfaced by the audit:
 
 (Session 005 entry above was truncated mid-line by a prior editor save — content captured in `feature_list.json` reconciliation done in same session. Skip to session 006 for current state.)
 
+### Session 017 — viz-003 Tier C interactive plotly figures (2026-06-03)
+
+- Date: 2026-06-03
+- Goal: close `viz-003-tier-c-interactive` (priority 27) — 2 new plotly HTMLs + C1 hover polish per `docs/visualization_plan.md` Tier C spec. Continuation of «идём по порядку» after viz-002.
+- Completed:
+  - `src/cmp_ensemble/viz/tier_c.py` (~245 lines) with two plotly builders, a C1 polish helper, and a fault-tolerant `render_all_tier_c(root)` dispatcher:
+    - C2 `interactive_ablation(setup_csvs, out_path)` — reads three setup `field_total_quantiles.csv` files, builds a single figure with one trace-block per metric (band + P50 line per setup, three setups overlaid using SETUP_COLORS palette), wires a metric-selector dropdown that toggles visibility of contiguous trace blocks. Unified hover, light-mode template. 18.7 KB on real data.
+    - C3 `interactive_theta_explorer(theta_prior_npy, theta_post_npy, cluster_ids_npy, out_path, theta_names=None)` — two stacked plotly Parcoords panels (prior on top half, posterior on bottom half), line colour from cluster ids (Tab-10 palette via CLUSTER_COLORS), per-axis range autoscaled. Custom labels (THICK..PROP) passed from the dispatcher. 60.1 KB on real data.
+    - C1 `polish_cluster3_hover(migration_csv, out_path)` — rebuilds the cluster3 diagnostic with a richer hover line that quantifies the prior→post shift in `% of |prior|`. Writes to a separate file `cluster3_diagnostic_hover.html` so the original `cluster3_diagnostic.html` from `qc/cluster_migration.py` stays intact. 25.2 KB on real data.
+  - Shared light-mode injection via `_write_with_light_theme`: every Tier C HTML carries `<meta name="color-scheme" content="light only">` and CSS that overrides `prefers-color-scheme: dark`. Same pattern as `qc/cluster_migration.py` so all three new HTMLs are visually consistent with the rest of the dashboard family.
+  - Dispatcher uses canonical paths under `outputs/` (forecast/, matrices/, qc/) and swallows missing-input errors with a WARNING — no crash if outputs/ is incomplete.
+  - Wired into the `cmp-ensemble figures` CLI subcommand after the Tier B block: each Tier C HTML gets a `*.html.meta.yaml` sidecar via `write_sidecar` with `extra={"figure": name, "tier": "C"}`.
+  - 8 tests in `tests/test_tier_c.py`:
+    - Per-figure non-empty HTML floor (10 KB).
+    - `plotly` JS hook present (not a static stub).
+    - Light-theme markers present (`content="light only"` + `prefers-color-scheme`).
+    - C1: σ-shift hover text injected (`prior→post shift` or `% of |prior|`).
+    - C2: schema rejection on missing columns + empty input dict.
+    - C3: custom labels propagate (THICK + MAJ_R visible in HTML).
+    - End-to-end dispatcher resilience: empty `outputs/` → empty result, no crash; minimal-outputs path writes all 3 HTMLs above the size floor.
+  - `pytest -q` → 201 passed (was 191 → +8 from `test_tier_c` + 2 previously-uncounted tests in other modules picked up in collection).
+- Files added: `src/cmp_ensemble/viz/tier_c.py`, `tests/test_tier_c.py`.
+- Files modified: `src/cmp_ensemble/viz/__init__.py` (re-exports), `src/cmp_ensemble/cli.py` (Tier C block in `figures` subcommand), `feature_list.json` (viz-003 → passing, last_updated), `claude-progress.md` (this entry).
+- Files not modified: `src/cmp_ensemble/qc/cluster_migration.py` — the C1 polish writes a separate file rather than rewriting the existing diagnostic.
+- Live verification on real outputs: `python -c "from cmp_ensemble.viz.tier_c import render_all_tier_c; ..."` produced all 3 HTMLs (18.7 / 60.1 / 25.2 KB) under `outputs/qc/`.
+- Open questions: none new. The 3 backlog STOPs (`phase1-stop`, `phase2-stop`, `phase3-stop`/`phase3-stop-update`) still need user sign-off; `phase4-stub` (priority 99) remains out of scope per ТЗ §12.
+- Next best step: the audit-flagged TODO list is empty; the viz-* backlog is closed. Reasonable continuations: (a) hand off to user for STOP sign-offs; (b) start `phase4-stub` if the user explicitly opts in; (c) leave the repo as-is at 201 passing tests.
+
 ### Session 016 — viz-002 Tier B diagnostic figures (2026-06-03)
 
 - Date: 2026-06-03
