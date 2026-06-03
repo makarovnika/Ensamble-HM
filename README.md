@@ -123,6 +123,7 @@ primary regression gate.
 | [`docs/data_format.md`](docs/data_format.md) | Excel input layout + pydantic schemas + linkage rule |
 | [`docs/methodology.md`](docs/methodology.md) | ES + subspace + localization derivation + evaluation_mode rationale |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common failures and how to diagnose |
+| [`docs/figure_captions.md`](docs/figure_captions.md) | Manuscript-ready captions for the 5 Tier A figures (≤ 80 words each) |
 | [`CLAUDE.md`](CLAUDE.md) | Agent operating rules + session workflow |
 | [`TZ_ensemble_forecast.md`](TZ_ensemble_forecast.md) | Canonical ТЗ (do not edit without approval) |
 | [`feature_list.json`](feature_list.json) | Per-feature status, verification, evidence |

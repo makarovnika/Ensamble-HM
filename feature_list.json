@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-02 (session 014 — cleanup sweep: cleanup-001..009 all passing, viz-001/004/006 deleted as dupes, 164 tests + 1 skip)",
+  "last_updated": "2026-06-02 (session 015 — viz-005 closed: docs/figure_captions.md + 15-test discipline gate; 179 tests + 1 skip)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -873,16 +873,22 @@
       "priority": 29,
       "area": "viz",
       "title": "Draft `docs/figure_captions.md` — manuscript-ready captions for Tier A figures",
-      "user_visible_behavior": "`docs/figure_captions.md` exists with 5 captions (one per Tier A figure), in the target journal's preferred style (Q1 O&G or ML), ready to copy-paste into the manuscript.",
-      "status": "not_started",
+      "user_visible_behavior": "`docs/figure_captions.md` exists with 5 captions (one per Tier A figure), Q1 scientific style, ready to copy-paste into a LaTeX manuscript. Cross-referenced from README.md and from a regression test enforcing the discipline rules.",
+      "status": "passing",
       "verification": [
-        "5 captions present.",
-        "Each caption: ≤ 80 words, includes panel descriptions where relevant, names colors and markers, refers to the relevant section of the methodology.",
-        "Caption for fig03 explicitly notes that setup2 ≡ setup3 (no workflow controls in this dataset).",
-        "No caption claims accuracy against truth (e.g. no 'matches the observed production' phrasing)."
+        "DONE (session 015): docs/figure_captions.md ~5 KB, 5 captions for fig01/02/03/04/06. Word counts: 74 / 71 / 74 / 68 / 76 (all ≤ 80).",
+        "DONE: fig03 caption contains 'Setup3 reproduces setup2 byte-for-byte because workflow controls are absent for this dataset and the runtime degrades setup3 to setup2 with a warning.'",
+        "DONE: no caption uses forbidden truth-claim phrasings (matches the observed/actual/truth, outperforms truth/baseline, accuracy against). Verified by tests/test_figure_captions.py::test_no_truth_claim_phrasing[fig01..fig06].",
+        "DONE: retired fig05 is explicitly called out in a closing 'Note on figure 5' subsection so readers do not assume it is missing in error.",
+        "DONE: captions cross-reference docs/methodology.md (fig01, fig02, fig03) and docs/data_format.md (fig04). README.md gets a new docs row pointing at figure_captions.md.",
+        "DONE: tests/test_figure_captions.py — 15 tests pass (document present, all 5 figures, per-figure word limit, fig03 setup-equivalence, per-figure truth-claim rejection, fig05 retirement, methodology cross-refs)."
       ],
-      "evidence": [],
-      "notes": "Final honesty pass — make sure no caption smuggles in a truth-comparison claim."
+      "evidence": [
+        "docs/figure_captions.md — 5 captions + authorship notes + retired-fig05 note",
+        "README.md docs/ table — new figure_captions.md row",
+        "tests/test_figure_captions.py — 15 tests pass"
+      ],
+      "notes": "Closed in session 015. The discipline test enforces what the manuscript author needs: word limit, fig03 setup2≡setup3 note, no truth-claim phrasing. Any future caption edit that violates a rule fails CI before the manuscript ships."
     },
     {
       "id": "viz-006-cli-figures-subcommand",

@@ -356,6 +356,35 @@ Newly surfaced by the audit:
 
 (Session 005 entry above was truncated mid-line by a prior editor save — content captured in `feature_list.json` reconciliation done in same session. Skip to session 006 for current state.)
 
+### Session 015 — viz-005 figure captions (2026-06-02)
+
+- Date: 2026-06-02
+- Goal: close `viz-005-figure-captions` (priority 29) — first item of the viz backlog after the cleanup sweep. User said "идём по порядку", so viz-005 → viz-002 → viz-003.
+- Completed:
+  - `docs/figure_captions.md` (~5 KB) — 5 manuscript-ready captions for the Tier A figures (fig01_pipeline, fig02_qc_spread, fig03_ablation_p10p90, fig04_cumulative_scatter, fig06_cluster3_migration). Each is a markdown blockquote ready to paste under a `\includegraphics{}` in LaTeX. Word counts: 74 / 71 / 74 / 68 / 76 (all ≤ 80, the spec limit).
+  - Discipline rules applied per the feature spec:
+    - **fig03 caption** explicitly notes 'Setup3 reproduces setup2 byte-for-byte because workflow controls are absent for this dataset and the runtime degrades setup3 to setup2 with a warning' — closes the manuscript-honesty gap from the ablation table.
+    - **No truth-claim phrasings**: avoided "matches the observed", "matches the actual", "outperforms baseline", "accuracy against truth" etc. The closest legitimate phrasing ("matches the historical observation" for adaptation residuals, not shown in any Tier A figure) is restated in the authorship-notes section.
+    - **fig04 caption** explicitly says values are forecast-period anomalies (production added after 2019-01-01, not totals since 2011) — closes the cumulative_anomaly clarity gap from cleanup-008.
+    - **Retired fig05** acknowledged in a closing 'Note on figure 5' so readers don't think a figure is missing in error.
+  - `tests/test_figure_captions.py` — 15 tests enforce the discipline:
+    - document present + non-empty (1)
+    - all 5 Tier A captions present (1)
+    - per-figure word-limit ≤ 80 (5 parametrised)
+    - fig03 setup2≡setup3 note (1)
+    - per-figure no-truth-claim phrasing (5 parametrised, scans 6 forbidden patterns)
+    - fig05 retirement explicitly mentioned (1)
+    - at least 3 captions cross-reference methodology.md or data_format.md (1)
+  - Updated `README.md` docs/ table — new row pointing at `docs/figure_captions.md`.
+- Verification run: `pytest -q` → **179 passed + 1 skipped** in 11.36 s (was 164; +15 from `test_figure_captions.py`).
+- Evidence captured: see `feature_list.json` `viz-005-figure-captions.evidence`.
+- Commits: forthcoming — `viz viz-005: docs/figure_captions.md + 15-test discipline gate`.
+- Files or artifacts updated:
+  - new: `docs/figure_captions.md`, `tests/test_figure_captions.py`.
+  - modified: `README.md` (docs table), `feature_list.json` (viz-005 → passing, last_updated), `claude-progress.md` (this entry).
+- Known risk or unresolved issue: none. The discipline test catches any future edit that violates word limit / truth-claim / fig03 setup-equivalence / cross-reference rules — a regression there would block CI before the manuscript ships.
+- Next best step: `viz-002` (priority 26) — 8 Tier B diagnostic figures embedded in `qc_report.html`. After that `viz-003` (priority 27) — 2 plotly interactive figures.
+
 ### Session 014 — Cleanup sweep (2026-06-02)
 
 - Date: 2026-06-02
