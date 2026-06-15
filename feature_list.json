@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-03 (session 017 — viz-003 closed: 2 Tier C plotly interactives + C1 σ-shift hover polish + dispatcher + 8 tests; 201 tests pass)",
+  "last_updated": "2026-06-15 (session 025 — geolval-000 closed: GRDECL parser + Stage 0 acceptance artefacts)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -21,6 +21,44 @@
     "phase4 (APS soft-category — out of scope for first iteration)"
   ],
   "features": [
+    {
+      "id": "tooling-001-write-tool-null-padding",
+      "priority": 0,
+      "area": "tooling",
+      "title": "CRITICAL ENVIRONMENT BUG: files written via Write/Edit tools get corrupted on Windows shared filesystem F:\\СМП\\...",
+      "user_visible_behavior": "Files authored through the Write tool get 0x00 bytes appended after content (parsers stop at first null). The Edit tool sometimes truncates files mid-content. Both patterns silently corrupt downstream tooling. Files written via bash redirect (`cat > file << EOF`) are clean.",
+      "status": "in_progress",
+      "verification": [
+        "Reproduce null-padding: write configs/experiment_setups.yaml via Write -> YAML loader raises 'unacceptable character #x0000' at byte 338.",
+        "Reproduce via cat > .. << EOF -> 0 null bytes, parses correctly.",
+        "Confirmed in session 023: 3 of 16 Write-tooled files had null padding (CLAUDE.md 82 nulls, ablation_table.tex 111 nulls, setup3 stub 1937 nulls).",
+        "Confirmed in session 023: feature_list.json was truncated mid-string by Edit tool, restored from HEAD.",
+        "Workaround: after every Write/Edit on F:\\СМП\\..., run `python3 -c 'b=open(F,\"rb\").read(); assert b.count(0)==0; json.loads(b) or yaml.safe_load(b) as appropriate'`. If it fails, re-author via `cat > F << EOF`.",
+        "Permanent fix: report to cowork environment maintainers — sandbox->Windows file sync corruption. Likely fixed-size buffer being flushed regardless of content length, or volume alignment quirk."
+      ],
+      "evidence": [
+        "Session 023 audit + fixes in claude-progress.md"
+      ],
+      "notes": "Root cause of long-running 'working-tree truncation' mystery from sessions 006, 013, 018, 020, 023. Real content truncation in src/cmp_ensemble/{forecast/metrics.py,cli.py,viz/__init__.py} is a separate older issue (see ready-001-revert-truncations)."
+    },
+    {
+      "id": "drop-setup3-source-code-surgery",
+      "priority": 0,
+      "area": "cleanup",
+      "title": "Drop setup3 from source code, tests, and regenerable artefacts (TZ v3, session 020)",
+      "user_visible_behavior": "After this: `grep -ri 'setup3' src/ tests/` returns zero in code paths; pytest passes with 2-setup ablation; `cmp-ensemble run --phase 3` produces only setup1+setup2; setup3_full_*.csv stub files deleted on real Windows fs.",
+      "status": "not_started",
+      "verification": [
+        "User-facing surfaces already updated in session 020: configs/experiment_setups.yaml, TZ, CLAUDE.md, README.md, docs/*, outputs/report.html, outputs/qc/qc_report.html, ablation_table.tex, metrics_summary.csv, regulation_8_6_4_*.csv, fig07, Notion page.",
+        "Remaining src files with setup3 references: src/cmp_ensemble/cli.py, src/cmp_ensemble/forecast/setups.py (run_setup3_full function), src/cmp_ensemble/forecast/d_builders.py, src/cmp_ensemble/forecast/__init__.py, src/cmp_ensemble/viz/{ablation,diagnostics,tier_c}.py.",
+        "Remaining tests to update: tests/test_{figure_captions,forecast,integration_synthetic,report,setups,tier_c}.py.",
+        "Surgery: (a) delete run_setup3_full + caller in cli.py; (b) drop setup3 from Phase-3 loops; (c) drop setup3 in viz; (d) update tests to assert 2 setups; (e) re-run pipeline to regenerate interactive_ablation.html.",
+        "Delete on real Windows fs: outputs/forecast/setup3_full_field_total_quantiles.csv + .meta.yaml (sandbox lacked rm).",
+        "After: pytest -q passes; grep -ri 'setup3' src/ tests/ returns 0 (except changelog comments)."
+      ],
+      "evidence": [],
+      "notes": "Code-side completion of user's session-020 decision. ~10 files, mechanical."
+    },
     {
       "id": "cleanup-001-metrics-truncation",
       "priority": 0,
@@ -938,6 +976,132 @@
       ],
       "evidence": [],
       "notes": "Per ТЗ §12 — do NOT implement Phase 4 in the first iteration. Only land the stub when Phase 3 is `passing` and the user explicitly asks."
+    },
+    {
+      "id": "geolval-000-grdecl-parser",
+      "priority": 100,
+      "area": "geology",
+      "title": "Stage 0: GRDECL/keyword parser + welltrack + model_index + exp_diff (TZ_geology_validation.md §4)",
+      "user_visible_behavior": "src/cmp_ensemble/io/grdecl.py reads PORO/PERMX/NTG/SATNUM cubes (RLE-aware) and welltrack from any Experiment 1/2 deck; CLI dumps outputs/geology_validation/model_index.csv and exp_diff.csv.",
+      "status": "passing",
+      "verification": [
+        "read_keyword_cube on Exp2/300 PORO returns float ndarray of length 535_720 with no NaN; RLE expansion correct.",
+        "read_grid_geometry returns NX=227 NY=59 NZ=40 plus FAULTS.",
+        "read_welltrack on Exp2/300 returns 23 wells.",
+        "Synthetic GRDECL fixture round-trips under pytest in <2s.",
+        "model_index.csv covers all 190 Exp1 + 149 Exp2 dirs.",
+        "exp_diff.csv has one row per matched SEED with delta_mean_PORO/PERMX/NTG and delta_var_*."
+      ],
+      "evidence": [
+        "src/cmp_ensemble/io/grdecl.py — read_keyword_cube, read_grid_geometry, read_welltrack, scan_experiment_dir",
+        "src/cmp_ensemble/geology/stage0.py — build_model_index, build_exp_diff, run_stage0",
+        "tests/test_grdecl.py — 21 tests, 100% pass (RLE edge cases + real Exp2/300 smoke)",
+        "outputs/geology_validation/model_index.csv — 339 rows (190 Exp1 + 149 Exp2)",
+        "outputs/geology_validation/exp_diff.csv — 123 matched-seed rows (PORO/PERMX/NTG mean+var deltas, frac_netflag_changed)",
+        "outputs/geology_validation/*.meta.yaml — sidecars with git SHA + config hash",
+        "Empirical finding: frac_netflag_changed = 0.40-0.43 (sand topology rebuilt, integral proportions stable to 1e-4)"
+      ],
+      "notes": "Stage 0 per TZ_geology_validation.md. Foundation for all axes. | Closed in session 025. Acceptance 0 satisfied: parser round-trips 535720-cell cube; 23 wells parsed; exp_diff populated for all 123 matched SEEDs (Exp2-only=26 forecast/centroid decks excluded)."
+    },
+    {
+      "id": "geolval-001-wellblock-descriptors",
+      "priority": 101,
+      "area": "geology",
+      "title": "Well-block descriptors (model x well): net_sand, kh, frac_channel, mean_ntg",
+      "user_visible_behavior": "descriptors_exp{1,2}.csv with sand-cutoff rule documented in configs/geology.yaml; overridable with --use-exported-cubes.",
+      "status": "not_started",
+      "verification": [
+        "Synthetic deck: descriptors_*.csv reproduces analytical sum dz_eff and sum permx*dz_eff within 1e-6.",
+        "On real Exp2/300: every well from welltrack appears in descriptors_exp2.csv.",
+        "perm_cutoff calibration logged in sidecar."
+      ],
+      "evidence": [],
+      "notes": "Depends on geolval-000. Sand indicator: NTG==1 AND PERMX>perm_cutoff (default; SATNUM map TBD via §11 Q1)."
+    },
+    {
+      "id": "geolval-002-connectivity",
+      "priority": 102,
+      "area": "geology",
+      "title": "Connected sand geobodies + well-well connectivity",
+      "user_visible_behavior": "geobody_stats.csv + connectivity_matrix_<seed>.npy; supports --connectivity {6,26}.",
+      "status": "not_started",
+      "verification": [
+        "Synthetic 3D blob round-trips at both connectivities.",
+        "Sensitivity test reports 6- vs 26-connectivity side-by-side."
+      ],
+      "evidence": [],
+      "notes": "Depends on geolval-000."
+    },
+    {
+      "id": "geolval-003-geology-production-link",
+      "priority": 103,
+      "area": "geology",
+      "title": "Axis 1: R2-uplift, SRC2 influence, descriptor-production correlations (bootstrap CI + 3/sqrt(N))",
+      "user_visible_behavior": "r2_uplift.csv, src2_influence.csv, corr_descriptor_production.csv per response on year-end anchors.",
+      "status": "not_started",
+      "verification": [
+        "Synthetic deck with prescribed Y -> R^2 uplift matches analytic.",
+        "On real data: r2_uplift.csv has 1 row per (response, experiment); src2_influence.csv lists per-descriptor contributions."
+      ],
+      "evidence": [],
+      "notes": "Blocked on §11 Q1 (facies dict) and Q2 (cadence). Depends on geolval-001."
+    },
+    {
+      "id": "geolval-004-realism-metrics",
+      "priority": 104,
+      "area": "geology",
+      "title": "Axis 2: facies proportions, concept conformance, artefact rates",
+      "user_visible_behavior": "realism_metrics.csv, facies_proportions.csv, concept_conformance.csv per cluster boxes from Notion §5.",
+      "status": "not_started",
+      "verification": [
+        "Synthetic mismatched cube: concept_conformance.csv reports 0% match.",
+        "On real data: numbers reported per experiment AND per cluster."
+      ],
+      "evidence": [],
+      "notes": "Blocked on §11 Q1. Depends on geolval-002."
+    },
+    {
+      "id": "geolval-005-diversity",
+      "priority": 105,
+      "area": "geology",
+      "title": "Axis 3: inter-model spread + geological width_ratio",
+      "user_visible_behavior": "diversity_metrics.csv: cellwise variance + descriptor variance + facies entropy per experiment and per cluster.",
+      "status": "not_started",
+      "verification": [
+        "Controlled synthetic ensemble of constant cubes: spread = 0 in every metric.",
+        "Pivot to compare against ES width_ratio sidecar metadata is present."
+      ],
+      "evidence": [],
+      "notes": "Depends on geolval-001 and -002."
+    },
+    {
+      "id": "geolval-006-history-consistency",
+      "priority": 106,
+      "area": "geology",
+      "title": "Axis 4: history-mismatch 2011–2018 + regulation 8.6.4 + cross-axis",
+      "user_visible_behavior": "history_consistency.csv: per-model weighted mismatch oil/water/BHP 2011–2018 + 8.6.4 pass-rate; cluster-2 migration check on cubes.",
+      "status": "not_started",
+      "verification": [
+        "Re-use existing outputs/qc/regulation_8_6_4_*.csv logic.",
+        "Bivariate (mismatch vs realism_score) figure produced in geolval-007."
+      ],
+      "evidence": [],
+      "notes": "Depends on geolval-001 and -004."
+    },
+    {
+      "id": "geolval-007-comparison-report",
+      "priority": 107,
+      "area": "geology",
+      "title": "summary_comparison.csv + report.md + 7 figures geol_fig01..07",
+      "user_visible_behavior": "outputs/geology_validation/{summary_comparison.csv, report.md, report.html} + 7 figures (.png 300dpi + .pdf vector).",
+      "status": "not_started",
+      "verification": [
+        "summary_comparison.csv has one row per (axis, metric) with old/new/direction/status/p-value or CI.",
+        "Each of geol_fig01..07 exists at both .png 300dpi and .pdf vector paths.",
+        "report.md contains the §9 limitations list verbatim (no truth-claim phrasings)."
+      ],
+      "evidence": [],
+      "notes": "Depends on geolval-003..-006."
     }
   ]
 }

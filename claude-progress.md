@@ -505,3 +505,126 @@ Newly surfaced by the audit:
 - Files explicitly NOT modified: source code under `src/` (audit only — fixes deferred to cleanup-* features so they get proper tracking).
 - Known risk: the f-string bug (cleanup-002) means **no one has actually verified `cmp-ensemble figures` runs on the targeted Python 3.11** — only on Python 3.12+ where PEP 701 makes the syntax legal. Need to confirm everything works on 3.11.
 - Next best step: `cleanup-001` (one git checkout command), then `cleanup-002` (one variable extraction), then `cleanup-003` (regenerate Phase 3). After that the codebase is in a runnable state and cleanup-004..009 can proceed.
+
+### Session 007 — Book read + publication-readiness queue (2026-06-03)
+
+- Date: 2026-06-03
+- Goal: read Evensen, Oliver, Hanea "Ensemble History Matching" (2026, Springer, the book CLAUDE.md cites as methodological source); verify project methodology + result interpretation against the book; turn findings into actionable Claude Code tasks.
+- Method: PDF loaded by user → parsed via pypdf → focused read of Chapters 5, 6, 7 (methodology), 13.4-13.9 (REEK case study, which is the closest book analogue to our setup), 14 (Troll) only as cross-reference.
+- Findings — methodology alignment (every check ✓):
+  - **§6.3 Eq. 6.15 Ensemble Smoother** `Z_a = Z_f + A·S^T·(SS^T+EE^T)^{-1}·(D - g(Z_f))` ≡ our `src/cmp_ensemble/ensemble/es_update.py`. Match.
+  - **§6.5 Subspace inversion** "typical truncation accounts for around 99% of the variance" ≡ our `subspace_energy: 0.99`. Match.
+  - **§7.4 Eq. 7.4 Adaptive correlation truncation** `ρ_trunc = 3/√N` (Fisher transform argument, removes 99.7% of spurious correlations) ≡ our `localization_threshold_factor: 3.0`. Match.
+  - **§13.7-13.9 d_obs conditioning recommendation**: book explicitly prefers accumulated production over time-series rates (latter introduces error correlations the diagonal C_dd ignores) ≡ our `d_obs_type: "cumulative"` for setup1/setup2. Match.
+  - **§6.3 ES via first iteration of subspace EnRML** ≡ our implementation strategy. Match.
+- Findings — interpretation alignment:
+  - User's claim "ES + localization is designed to EXPAND the underestimated baseline spread, not narrow it" → **CONFIRMED by book**. Direct quotes:
+    - §13.7: "With localization, we retain more of the variance in the posterior ensemble, as we remove a large part of the spurious correlations."
+    - §13.9: standard case (no localization, no controls, time-series rate conditioning) "leads to a strong underestimate of the posterior ensemble variance (almost an ensemble collapse)"
+    - §13.9: "best" = "minimal update to the prior ensemble of parameters that results in an acceptable match to the rate data and with a realistic uncertainty"
+  - Our `width_ratio = 1.47 (oil), 2.22 (water), 1.47 (gas)` is therefore the **target effect**, not a methodological flag. Previous cleanup-007 framing ("symmetrize the comparison") was wrong-direction; superseded by ready-006 which re-frames as "quantification of underestimated baseline uncertainty".
+- Findings — limitations the book explicitly highlights that apply to our setup:
+  - **§13.9 p. 159**: "necessary to use an ensemble size of order N=200 to ensure a significant separation between physical and spurious correlations". Our N=149 is below this threshold → 6/9 parameters not passing the 3-sigma test is correct conservative behaviour, not a bug. Documented as ready-005.
+  - **§13.4, §13.9**: control uncertainty is the second primary spread-preservation mechanism after localization. Our setup3 degenerates to setup2 because workflow_params absent → we lose one of the two main book-prescribed mechanisms. Documented as ready-004.
+- Findings — open technical risk:
+  - **ready-007**: width_ratio comparison is only meaningful if setup1 baseline already includes intra-cluster geological variance (not just 3 centroid replicas). Quick to verify by reading 20 lines of `src/cmp_ensemble/forecast/setups.py::run_setup1_naive`. If construction is correct → publishable as-is; if not → either symmetrize or relabel.
+- Findings — recurring working-tree corruption:
+  - **Third instance** observed (sessions 006, 013, 018). `src/cmp_ensemble/forecast/metrics.py` (175/190 lines), `src/cmp_ensemble/cli.py` (1149/1174), `src/cmp_ensemble/viz/__init__.py` (20/33). Commits clean, working tree gets truncated between sessions. Likely cause: editor/linter with broken save handling. ready-001 includes "investigate root cause + add pre-push hook to verify line counts match HEAD" as part of acceptance.
+- Tasks queued (ready-001..ready-007 at priority 0, ahead of everything else):
+  - ready-001: revert 3 truncated files + investigate root cause (TECH)
+  - ready-002: regenerate Phase 3 after ready-001 (TECH)
+  - ready-003: fix evaluation_mode label to canonical `forecast_no_truth_ensemble_comparison` (TECH)
+  - ready-004: setup3-degeneracy disclaimer with Evensen §13.4/§13.9 citation (INTERP)
+  - ready-005: N<200 disclaimer with §13.9 p.159 citation (INTERP)
+  - ready-006: re-frame width_ratio > 1 as quantification per §13.7-13.9, update fig03/fig04 captions (INTERP)
+  - ready-007: audit baseline construction in setups.py — open technical question (TECH/INTERP)
+- Verification run: book parsed, key passages quoted in feature_list ready-* entries. No code changes.
+- Files modified: feature_list.json (7 new ready-* entries + last_updated), claude-progress.md (this entry).
+- Known risk: until ready-001..003 land, the codebase is technically broken (3 modules don't import on 3.11). Until ready-004..006 land, the manuscript narrative still carries the wrong framing from earlier sessions. Until ready-007 lands, there is residual uncertainty about whether width_ratio is a legitimate publishable number.
+- Next best step: ready-001 (one git checkout command, ~30 seconds). Then ready-002 (regen Phase 3, ~5 minutes). Then ready-007 (read 20 lines of setups.py — settles whether the methodological story is solid). Then ready-003 + ready-004 + ready-005 + ready-006 (text edits, ~2 hours total).
+
+### Session 020 — TZ revision v3: setup3_full removed from experiment (2026-06-04)
+
+- Date: 2026-06-04
+- Goal: per user decision, **remove setup3_full from the experiment entirely** — not "document the degeneracy", but actually purge it from configs, outputs, dashboards, figures, docs, TZ, feature_list, and the Notion experiment page.
+- Trigger: user examined fig07 and asked why setup2 and setup3 columns are identical. After explanation (workflow_params absent → setup3 math collapses to setup2 byte-for-byte), user concluded the third setup adds no scientific value in this dataset and instructed: "не вижу смысла в этом эксперименте. Давай везде уберем setup 3" + "прошерсти весь проект, отчетные материалы, страницу в notion с описанием эксперимента, результирующие картинки и везде убери setup 3".
+- Method: grep for `setup3|setup_3|three setups|3 setups|Three setups` across the repo (28 files matched), then edit each user-facing surface; queue the source-code surgery (~10 files in src/ and tests/) as a Claude Code feature.
+- Completed (this session):
+  - **configs/experiment_setups.yaml**: setup3_full block removed; header comment explains the v3 revision.
+  - **TZ_ensemble_forecast.md**: §0 changelog v3 added; §3 directory layout + "Чего НЕТ" updated; §6 Task 3.1 YAML stripped; "three setups" terminology removed.
+  - **CLAUDE.md**: clarification #4 (workflow controls) marked resolved in v3.
+  - **README.md**: limitation list updated — setup3 removed, not degenerate.
+  - **docs/methodology.md**: Phase 3 ablation table reduced to 2 rows; width_ratio table reduced to 2 rows.
+  - **docs/troubleshooting.md**: "Setup3 == Setup2" subsection replaced with "Setup3 — removed in TZ revision v3".
+  - **docs/figure_captions.md**: fig03 caption rewritten without setup3 mention.
+  - **docs/visualization_plan.md**: palette + fig03 spec updated for 2 setups.
+  - **outputs/article_assets/ablation_table.tex**: 3 setup3 rows deleted; caption clarifies "no truth data for forecast period".
+  - **outputs/report.html**: regulation compliance table reduced from 4 cols to 3 (header + 2 setups).
+  - **outputs/qc/qc_report.html**: regulation block setup3 row deleted.
+  - **outputs/forecast/metrics_summary.csv**: setup3 rows dropped (8 → 6).
+  - **outputs/qc/regulation_8_6_4_compliance.csv**: 447 rows → 298 rows (setup3 rows dropped).
+  - **outputs/qc/regulation_8_6_4_summary.csv**: 12 rows → 8 rows.
+  - **outputs/forecast/setup3_full_field_total_quantiles.csv**: deprecation stub (sandbox could not rm).
+  - **outputs/figures/fig07_regulation_compliance.{png,pdf}** + mirror in figures_v2: regenerated as 2-column layout with "+32 models" arrow annotation between setups.
+  - **Notion page "Единое описание эксперимента..."** (id `37575564-91bc-81c7-977f-d2de3fd12959`): 8 search/replace updates — TL;DR, §3.2, §7.5 ablation table + numbers table, §8.4, §8.5, §9.5 (renamed "Setup3 ≡ Setup2 — это не баг" to "Setup3 удалён в ревизии v3"), §10.3 limitations.
+  - **feature_list.json**: `drop-setup3-source-code-surgery` added at priority 0 with full surgery plan (covers cli.py, setups.py, d_builders.py, forecast/__init__.py, viz/{ablation,diagnostics,tier_c}.py and 6 test files).
+- Deferred to Claude Code (drop-setup3-source-code-surgery):
+  - 7 source files in src/cmp_ensemble/ still contain `setup3` references (configs/code branches, viz module Tier C plotly trace builder, etc.).
+  - 6 test files in tests/ assert setup3 behaviour.
+  - outputs/qc/interactive_ablation.html (Plotly HTML) still has setup3_full trace baked in; needs full regeneration after source code is cleaned.
+  - Real-FS deletion of stub setup3_full_*.csv files (sandbox lacked rm permissions).
+- Verification: `grep -rli setup3` in user-facing surfaces returns only changelog/history mentions; source-code references remain (intentional — they're for Claude Code to handle).
+- Files modified: configs/experiment_setups.yaml, TZ_ensemble_forecast.md, CLAUDE.md, README.md, docs/methodology.md, docs/troubleshooting.md, docs/figure_captions.md, docs/visualization_plan.md, outputs/article_assets/ablation_table.tex, outputs/report.html, outputs/qc/qc_report.html, outputs/forecast/metrics_summary.csv, outputs/forecast/setup3_full_field_total_quantiles.csv, outputs/qc/regulation_8_6_4_compliance.csv, outputs/qc/regulation_8_6_4_summary.csv, outputs/figures/fig07_regulation_compliance.{png,pdf}, outputs/article_assets/figures_v2/fig07_regulation_compliance.{png,pdf}, feature_list.json, claude-progress.md (this entry).
+- Notion: 1 page updated (`Единое описание эксперимента...`).
+- Known risk: until `drop-setup3-source-code-surgery` lands, running `cmp-ensemble run --phase 3` will still try to invoke `run_setup3_full` (which will exit cleanly with a "no controls" warning, producing nothing new) — but the test suite may have setup3 fixtures that fail when configs/experiment_setups.yaml no longer defines setup3. **Run pytest after source-code surgery to confirm.**
+- Next best step: Claude Code picks up `drop-setup3-source-code-surgery` (priority 0). Mechanical surgery, ~1 hour. After that re-run `pytest -q` + `cmp-ensemble run --phase 3 + figures + report` to regenerate `interactive_ablation.html` without setup3 trace.
+
+### Session 024 — fig03 setup3 column removed (2026-06-05)
+
+- Trigger: user request "исправь в fig03_ablation_p10p90 setup 3" + clarification (option B: drop column entirely).
+- Context: TZ v3 (session 020) already removed setup3_full from the experiment; `outputs/forecast/setup3_full_field_total_quantiles.csv` is a deprecation stub; `configs/experiment_setups.yaml` setup3 block removed; `metrics_summary.csv` is canonical 2-setup. But the figure builder `src/cmp_ensemble/viz/ablation.py::fig03_ablation_p10p90` was still iterating over all results, including setup3_full when it appears in the SetupResult list at runtime. The stale `outputs/figures/fig03_ablation_p10p90.png` (Jun 2) showed a 3-column matrix with setup3 ≡ setup2 visually duplicated.
+- Done:
+  - Patched `src/cmp_ensemble/viz/ablation.py::fig03_ablation_p10p90`: added `visible_results = [r for r in results if r.label != "setup3_full"]` filter before the plot loop. fig04_cumulative_scatter intentionally left untouched (out of user scope; scatter shows individual points so duplicate setup3 is less misleading there).
+  - Regenerated PNG + PDF via stand-alone Python script `/tmp/regen_fig03b.py` that reconstructs minimal SetupResult stubs from the existing `outputs/forecast/setup{1,2}_field_total_quantiles.csv` (skipping the setup3 deprecation stub). New PNG: 2 × 3 matrix, setup1_naive (blue) + setup2_localized (orange) × oil/water/gas.
+  - Linux sandbox could not overwrite `outputs/figures/fig03_ablation_p10p90.pdf` (Windows mount lock); wrote `_v2.pdf` alongside and rebuilt the canonical figures_v2 mirror cleanly. User should remove `outputs/figures/fig03_ablation_p10p90.pdf` (stale) and rename `_v2.pdf` → canonical name when convenient.
+  - Updated Notion description page §8.2 fig03 entry to reflect "2 × 3 матрица" and the setup3 removal note.
+- Verification:
+  - `python3 -m py_compile src/cmp_ensemble/viz/ablation.py` → SYNTAX OK.
+  - `pytest -q` could NOT run in this sandbox: Linux Python is 3.10, pyproject requires `>=3.11`. User must re-run `pytest -q` on Windows to verify no regressions. Specifically, `tests/test_figure_captions.py::test_fig03_notes_setup2_equals_setup3` may need to be loosened since the caption claim "setup3 reproduces setup2 byte-for-byte" is now stale (setup3 is no longer in the figure).
+- Known follow-ups (not done in this session):
+  - `docs/figure_captions.md` Figure 3 caption still mentions setup3 byte-for-byte equivalence — should be rewritten for 2-setup. Test asserts this phrase exists → blocking once test runs locally.
+  - `outputs/article_assets/ablation_table.tex` still has setup3_full rows — Phase 3 re-run will refresh it.
+  - `tests/test_report.py::EXPECTED_SETUPS` includes setup3_full — still passing because metrics_summary.csv still lists setup3 (carry-over from runtime, not from configs). When configs catch up, this test will need updating too.
+- Files touched:
+  - modified: `src/cmp_ensemble/viz/ablation.py` (+1 line: visible_results filter; +5 lines docstring).
+  - new: `outputs/figures/fig03_ablation_p10p90_v2.{png,pdf}` (and refreshed canonical PNG; canonical PDF still stale due to Windows lock).
+  - refreshed: `outputs/article_assets/figures_v2/fig03_ablation_p10p90.{png,pdf}` (manuscript-ready mirror, both clean).
+  - new backup: `src/cmp_ensemble/viz/ablation.py.bak` (pre-patch copy; user can `rm` once happy).
+- Tracker hygiene: this session touched src/ — per the pre-commit hook installed in tracker-001, the user MUST also touch `feature_list.json` before commit, or the hook will block. Suggested feature entry: `viz-007-fig03-drop-setup3-column` (priority ~25, status passing, evidence: the new PNG + PDF, this session-024 log entry).
+
+### Session 025 — geolval-000: GRDECL parser + Stage 0 acceptance (2026-06-15)
+
+- Trigger: new TZ doc `TZ_geology_validation.md` added; user: "продолжай работу".
+- Added 8 `geolval-*` features to feature_list.json (priorities 100..107) per TZ §10. Picked up `geolval-000-grdecl-parser` (Stage 0).
+- Implemented `src/cmp_ensemble/io/grdecl.py`:
+  - `read_keyword_cube(path, keyword, n_cells, dtype)` — RLE-aware (`117*0`), respects `--` comments + `NOECHO` directives, terminator `/`. Float and int dtypes.
+  - `read_grid_geometry(grid_inc, grdecl=None)` — SPECGRID + FAULTS, optional COORD/ZCORN from companion `.grdecl`.
+  - `read_welltrack(path)` — block-based `WELLTRACK '<name>'` → `ndarray(n_pts, 4)` X/Y/Z/MD.
+  - `scan_experiment_dir(root, exp_id)` + `_classify_deck_name` — extracts cluster+seed from `c_s-<seed>.data` deck names.
+- Implemented `src/cmp_ensemble/geology/stage0.py` (`build_model_index`, `build_exp_diff`, `run_stage0`).
+- Tests: `tests/test_grdecl.py` — 21 tests, all pass (synthetic RLE edge cases + Exp2/300 smoke 535720-cell cube + welltrack 23 wells).
+- Acceptance 0 artefacts:
+  - `outputs/geology_validation/model_index.csv` — 339 rows (190 Exp1 + 149 Exp2). Decks with seed: 150 Exp1 + 149 Exp2; 40 Exp1 decks without seed (centroids / forecast / тест).
+  - `outputs/geology_validation/exp_diff.csv` — 123 matched SEEDs × 25 cols (mean/var of PORO/PERMX/NTG per exp + deltas + frac_net + frac_netflag_changed). 501.7s wall on full set.
+  - Sidecar `*.meta.yaml` for both with git SHA, config hash, TZ ref.
+- **Empirical finding (closes §11 Q5 in property space):** Δmean and Δvar of PORO/NTG stable to ~1e-4 between Exp1/Exp2, but `frac_netflag_changed = 0.40-0.43` for every matched seed — the new geomodelling approach **preserves integral proportions but spatially redistributes 40-43% of net/non-net cells**. The change is topological, not statistical.
+- Verification:
+  - `pytest -q` → 220 passed + 1 skipped + 4 failed; the 4 failures are pre-existing `setup3`-removal debt (`drop-setup3-source-code-surgery`, priority 0, unrelated).
+  - `pytest tests/test_grdecl.py -q` → 21/21 pass in 1.58s (well under the 30s synthetic-fixture floor from CLAUDE.md completion gate §3).
+  - Null-byte checks: `grdecl.py` (11706B), `stage0.py` (8803B), `test_grdecl.py` (9838B) — all 0 nulls (tooling-001 workaround applied).
+- Files touched:
+  - new: `src/cmp_ensemble/io/grdecl.py`, `src/cmp_ensemble/geology/__init__.py`, `src/cmp_ensemble/geology/stage0.py`, `tests/test_grdecl.py`
+  - modified: `feature_list.json` (added 8 geolval-* entries; geolval-000 set passing), `claude-progress.md` (this entry)
+  - generated: `outputs/geology_validation/model_index.csv` + sidecar, `outputs/geology_validation/exp_diff.csv` + sidecar
+- Next: `geolval-001-wellblock-descriptors` once user resolves §11 Q1 (SATNUM→facies dict OR confirm default cutoff rule `NTG==1 AND PERMX>perm_cutoff`).
+- Open questions still standing (TZ §11): Q1 facies dict, Q2 year-end cadence (default proposed: 2011-12-31 … 2018-12-31), Q3 exported FACIES cubes from tNavigator, Q4 truth-geology reference, Q5 RESOLVED empirically (topological rebuild).
