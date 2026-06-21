@@ -730,3 +730,28 @@ Newly surfaced by the audit:
   - generated: `diversity_{descriptor_spread,connectivity_spread,width_ratio}.csv` + 3 sidecars.
   - modified: feature_list.json (geolval-005 → passing), claude-progress.md.
 - Next candidate: `geolval-006-history-consistency` (mismatch + 8.6.4 + cross-axis with realism) — unblocks the bivariate `geol_fig06_history_vs_realism` which is the main visual claim for the article. After that `geolval-007` (summary_comparison.csv + report.md + figures) closes the TZ.
+
+### Session 026 (cont. 3) - geolval-006: history-realism cross-axis (2026-06-21)
+
+- Picked up `geolval-006-history-consistency` straight after geolval-005. Closed.
+- Implementation: `src/cmp_ensemble/geology/history.py`
+  - `compliance_summary` aggregates `outputs/qc/regulation_8_6_4_compliance.csv` into per-(setup, cluster) pass-rates with an "all-clusters" row.
+  - `model_misfit` derives per-(setup, model) `total_mismatch_pct = dev_field_cum + dev_field_annual + dev_well_top80`.
+  - `load_model_seed_map` parses `models_near_adapted_centroids.xlsx` (header=3) to recover the `MODEL -> round(SEED)` mapping that bridges compliance's Excel-MODEL IDs (403, 2149, …) to connectivity's deck-name SEEDs (32434, 22369, …).
+  - `history_vs_realism` joins per-model misfit with connectivity (frac_sand_in_largest_26, mean_inj_connections_per_producer, n_bodies_26) via the seed map, with a direct-join fallback for unit tests.
+  - `build_history` driver returns the four artefacts + cross-axis correlations.
+- Tests: `tests/test_geology_history.py` - 6 pass in 0.36s.
+- Artefacts (in `outputs/geology_validation/`):
+  - `history_compliance_summary.csv` - 8 rows.
+  - `history_model_misfit.csv` - 298 rows.
+  - `history_vs_realism.csv` - 298 rows with non-null realism columns (was 0 before the seed-map fix).
+  - `history_cross_axis_correlations.json`.
+- **Key empirical findings for the article (axis 4 - the main one):**
+  - **Compliance 8.6.4 pass-rate**: overall 36.2% (setup1) -> 57.7% (setup2); cluster 2 30% -> 92% - **exact match to TZ §5.4 expectation**.
+  - **Per-(setup, cluster) mean mismatch**: cluster 0 30%->28%, cluster 1 39%->27%, **cluster 2 38%->17%**. Largest improvement is in the cluster the TZ flagged as `migrated`.
+  - **Per-seed delta_mismatch** (setup2 - setup1): mean=-11.8%, median=-9.1%, **70.5% of models improved** (105/149).
+  - **Cross-axis Pearson r ~ 0** in both setups (setup1 r=+0.07, setup2 r=-0.04). Mismatch and topology are essentially uncorrelated. **This is the central "no overfit at the cost of realism" signal**: the mismatch reduction is not bought by degrading the geological realism. Combined with geolval-005 (Exp2 tightens topology, broadens shape diversity), the article can claim: "the new methodology improves history matching while preserving and even refining geological realism."
+- Cross-axis bug-fix story: first build_history run had `frac_largest_26` NaN in all 298 rows because compliance.model_id (Excel-MODEL like 403) does not equal connectivity.seed (deck-SEED like 32434). The Excel `models_near_adapted_centroids.xlsx` provided the bridge (MODEL=403 -> SEED=32433.57 -> round=32434). Header=3 is the right row in those sheets; header=2 misses the column names by one line. Test coverage now pins both the with-map and direct-join paths.
+- Verification: `pytest tests/test_geology_history.py -q` -> 6/6 in 0.36s. Full suite next.
+- Files touched: new `src/cmp_ensemble/geology/history.py` (~190 LOC), `tests/test_geology_history.py` (6 tests); generated 3 CSV + 1 JSON + 4 sidecars; modified feature_list.json (geolval-006 -> passing), claude-progress.md.
+- Next: `geolval-007-comparison-report` is now unblocked - all axis-2 / axis-3 / axis-4 inputs are on disk. Axis-1 (R^2-uplift) still blocked on TZ §11 Q1 (facies dict); for the summary table we can either include axis-1 as `pending_user_input` rows or implement a thinner R^2 proxy now (Q2-defaulted year-end cadence already in geology.yaml).

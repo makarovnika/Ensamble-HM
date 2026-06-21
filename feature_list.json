@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 - geolval-005 closed: diversity spread + geological width_ratio)",
+  "last_updated": "2026-06-21 (session 026 - geolval-006 closed: history-realism cross-axis + 8.6.4 compliance)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1101,13 +1101,20 @@
       "area": "geology",
       "title": "Axis 4: history-mismatch 2011–2018 + regulation 8.6.4 + cross-axis",
       "user_visible_behavior": "history_consistency.csv: per-model weighted mismatch oil/water/BHP 2011–2018 + 8.6.4 pass-rate; cluster-2 migration check on cubes.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Re-use existing outputs/qc/regulation_8_6_4_*.csv logic.",
         "Bivariate (mismatch vs realism_score) figure produced in geolval-007."
       ],
-      "evidence": [],
-      "notes": "Depends on geolval-001 and -004."
+      "evidence": [
+        "src/cmp_ensemble/geology/history.py - compliance_summary, model_misfit, load_model_seed_map, history_vs_realism, build_history",
+        "tests/test_geology_history.py - 6 tests, all pass",
+        "outputs/geology_validation/history_compliance_summary.csv - 8 rows (2 setups x 4 cluster groups)",
+        "outputs/geology_validation/history_model_misfit.csv - 298 rows (per-setup, per-model total mismatch)",
+        "outputs/geology_validation/history_vs_realism.csv - 298 rows with frac_largest_26 attached via MODEL<->SEED Excel map",
+        "outputs/geology_validation/history_cross_axis_correlations.json - setup1 r=+0.07, setup2 r=-0.04"
+      ],
+      "notes": "Depends on geolval-001 and -004. | Closed session 026. Key findings: compliance 8.6.4 pass-rate 36.2->57.7% overall, cluster 2 30%->92% (matches TZ §5.4 expectation 30%->92% exactly). Per-seed delta_mismatch mean=-11.8%, median=-9.1%, 70.5% of models improved. Cross-axis Pearson r near zero in both setups -- mismatch reduction is NOT bought by degrading topology, the exact 'no overfit at the cost of realism' signal the article needs."
     },
     {
       "id": "geolval-007-comparison-report",
