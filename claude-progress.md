@@ -755,3 +755,31 @@ Newly surfaced by the audit:
 - Verification: `pytest tests/test_geology_history.py -q` -> 6/6 in 0.36s. Full suite next.
 - Files touched: new `src/cmp_ensemble/geology/history.py` (~190 LOC), `tests/test_geology_history.py` (6 tests); generated 3 CSV + 1 JSON + 4 sidecars; modified feature_list.json (geolval-006 -> passing), claude-progress.md.
 - Next: `geolval-007-comparison-report` is now unblocked - all axis-2 / axis-3 / axis-4 inputs are on disk. Axis-1 (R^2-uplift) still blocked on TZ §11 Q1 (facies dict); for the summary table we can either include axis-1 as `pending_user_input` rows or implement a thinner R^2 proxy now (Q2-defaulted year-end cadence already in geology.yaml).
+
+### Session 026 (cont. 4) - geolval-007: comparison report + 5 article figures (2026-06-21)
+
+- Picked up `geolval-007-comparison-report`. Closed.
+- Implementation:
+  - `src/cmp_ensemble/geology/comparison.py` - per-axis builders (axis0_topology, axis2_connectivity, axis3_width_ratio, axis4_compliance + misfit + crossaxis), build_pending for axes 1+2-facies still blocked on §11 Q1, build_summary_comparison driver. Classifies each row as BETTER/WORSE/NEUTRAL/PENDING_USER_INPUT.
+  - `src/cmp_ensemble/viz/geology.py` - 5 figure builders + render_all_geology_figures dispatcher (PNG 300 dpi + PDF vector + mirror into outputs/article_assets/figures_v2/). Two more figures (fig01 R²-uplift, fig02 descriptor-corr) deferred to when §11 Q1 lands.
+- Tests: `tests/test_geology_comparison.py` - 12 pass in 0.37s.
+- Artefacts:
+  - `outputs/geology_validation/summary_comparison.csv` - 34 rows. 8 BETTER, 1 WORSE, 19 NEUTRAL, 6 PENDING_USER_INPUT.
+  - `outputs/geology_validation/report.md` - 12 KB Q1-grade narrative covering all 4 axes + TZ §9 limitations verbatim + §11 open-questions table + artefact index.
+  - 5 article figures (PNG 300 dpi + PDF vector + article_assets mirror):
+    - `geol_fig03_facies_geometry` (143 KB png)
+    - `geol_fig04_geobody_connectivity` (122 KB)
+    - `geol_fig05_diversity` (162 KB - width_ratio horizontal bar chart)
+    - `geol_fig06_history_vs_realism` (294 KB - the main scatter)
+    - `geol_fig07_cluster2_migration` (484 KB - paired-line + box)
+- **Key empirical bottom line for the article:**
+  - 8 BETTER rows include cluster 2 8.6.4 30->92% and mismatch 38->17%, worst-case `frac_largest_26` 0.07->0.92, 2 patho models -> 0 patho models.
+  - **1 WORSE row** (cluster 0 8.6.4 52->34%) reported transparently - a real local trade-off.
+  - 19 NEUTRAL rows include all width_ratio rows (direction=~), Stage-0 deltas (direction=~), and median connectivity (already saturated in both).
+  - 6 PENDING rows for axes 1 + axis-2 facies conformance - explicitly flagged, not silently dropped.
+- Verification:
+  - `pytest tests/test_geology_comparison.py -q` -> 12/12 pass.
+  - Full `pytest -q` -> 277 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
+- TZ §3 deliverable count: 6 out of 9 fully delivered, 2 partially (figures 01-02 blocked), 1 (the meta sidecar list) automated.
+- Files touched: new `src/cmp_ensemble/geology/comparison.py`, `src/cmp_ensemble/viz/geology.py`, `tests/test_geology_comparison.py`, `outputs/geology_validation/report.md`; generated `summary_comparison.csv` + 5 figures + 12 sidecars; modified feature_list.json + claude-progress.md.
+- **TZ_geology_validation.md complete** to the extent §11 Q1 allows. Axis 1 R²-uplift and axis 2 facies-conformance ready to backfill in one session once the user supplies the SATNUM->facies dictionary (or confirms the default cutoff rule is the article's stated definition).

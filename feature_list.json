@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 - geolval-006 closed: history-realism cross-axis + 8.6.4 compliance)",
+  "last_updated": "2026-06-21 (session 026 - geolval-007 closed: summary_comparison.csv + report.md + 5 article figures)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1122,14 +1122,22 @@
       "area": "geology",
       "title": "summary_comparison.csv + report.md + 7 figures geol_fig01..07",
       "user_visible_behavior": "outputs/geology_validation/{summary_comparison.csv, report.md, report.html} + 7 figures (.png 300dpi + .pdf vector).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "summary_comparison.csv has one row per (axis, metric) with old/new/direction/status/p-value or CI.",
         "Each of geol_fig01..07 exists at both .png 300dpi and .pdf vector paths.",
         "report.md contains the §9 limitations list verbatim (no truth-claim phrasings)."
       ],
-      "evidence": [],
-      "notes": "Depends on geolval-003..-006."
+      "evidence": [
+        "src/cmp_ensemble/geology/comparison.py - build_axis0/2/3/4 + build_summary_comparison",
+        "src/cmp_ensemble/viz/geology.py - 5 figure builders + render_all_geology_figures dispatcher",
+        "tests/test_geology_comparison.py - 12 tests, all pass",
+        "outputs/geology_validation/summary_comparison.csv - 34 rows: 8 BETTER/1 WORSE/19 NEUTRAL/6 PENDING",
+        "outputs/geology_validation/report.md - 12 KB Q1-grade narrative report",
+        "outputs/geology_validation/figures/geol_fig0{3,4,5,6,7}.{png,pdf} - 5 figures + mirrored under outputs/article_assets/figures_v2/",
+        "fig01 + fig02 deferred (PENDING_USER_INPUT, TZ §11 Q1 facies dict)"
+      ],
+      "notes": "Depends on geolval-003..-006. | Closed session 026. TZ §6 deliverable: 5/7 figures rendered (fig01+fig02 await Q1). Single WORSE row (cluster 0 8.6.4 52->34%) is a real local regression, transparently reported - overwhelmed by cluster 2 30->92% and cluster 1 27->47%."
     }
   ]
 }
