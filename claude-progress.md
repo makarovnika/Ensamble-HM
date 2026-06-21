@@ -707,3 +707,26 @@ Newly surfaced by the audit:
   - generated: `outputs/geology_validation/connectivity_summary.csv` + sidecar, `outputs/geology_validation/connectivity_matrices/exp{1,2}_<seed>.npz`.
   - modified: feature_list.json (geolval-002 to passing), claude-progress.md (this entry).
 - Next: `geolval-005-diversity` is the natural follow-up (cellwise variance + facies entropy reusing the cubes already in memory) OR `geolval-006-history-consistency` (mismatch + regulation 8.6.4 + cross-axis with the connectivity result). Both unblocked by open §11 questions; `geolval-003/004` still blocked on Q1 (facies dict).
+
+### Session 026 (cont. 2) - geolval-005: diversity + geological width_ratio (2026-06-21)
+
+- Picked up `geolval-005-diversity` immediately after geolval-002 (artefact-reuse pathway: no new cube I/O, all aggregation from existing descriptors_exp{1,2}.csv + connectivity_summary.csv).
+- Implementation: `src/cmp_ensemble/geology/diversity.py`
+  - `_spread_block` five-number + std + IQR + range.
+  - `descriptor_spread` per-(experiment, cluster) with two scopes: `all_wells` (well-level distribution) and `model_mean` (TZ §5.3 inter-model definition).
+  - `connectivity_spread` for 8 connectivity metrics.
+  - `geological_width_ratio`: spread(Exp2)/spread(Exp1) for 12 metrics with ES width_ratio reference column (1.47/2.22/1.47 from Notion §7.4 — different plane, kept for direct comparison in the article).
+  - `build_diversity` end-to-end driver reading the two existing CSV tables.
+- Tests: 8 pass, including a directionality test (synthetic ensembles with known sigma ratio → width_ratio<1 + "tightens" verdict).
+- Artefacts: `diversity_{descriptor_spread,connectivity_spread,width_ratio}.csv` + sidecars under `outputs/geology_validation/`.
+- **Key empirical findings for the article (axis 3):**
+  - **Exp2 tightens topology metrics**: `frac_sand_in_largest_26 width_ratio = 0.17` (6x stabler), `top1_orientation_deg = 0.36` (2.8x), `mean_inj_connections_per_producer = 0.51` (2x), `max_inj_conn = 0.37`.
+  - **Exp2 broadens shape diversity**: `top1_anisotropy = 1.81` (channels are MORE varied in elongation), `mean_ntg_along_well = 1.06`, `n_bodies_26 = 1.006` (essentially unchanged).
+  - **Interpretation:** the new methodology converges on the right topology (always-connected reservoir, INJ-producer paths, channel orientation) while preserving/expanding variability in body shape. This is the "less collapse, more relevance" balance TZ §5.3 explicitly asks for.
+  - **Sign contrast with ES width_ratio**: ES forecast width_ratio = 1.47-2.22 (Exp2 BROADENS forecast uncertainty); geological width_ratio for topology metrics is < 1 (Exp2 TIGHTENS). They measure different planes — geology in property/realization space, ES in forecast quantile space — and are not in conflict. The two halves of the article: "geology becomes more realistic and consistent" + "forecast properly represents uncertainty."
+- Verification: `pytest tests/test_geology_diversity.py -q` → 8/8 pass in 0.44s. Full `pytest -q` → 256 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
+- Files touched:
+  - new: `src/cmp_ensemble/geology/diversity.py`, `tests/test_geology_diversity.py`.
+  - generated: `diversity_{descriptor_spread,connectivity_spread,width_ratio}.csv` + 3 sidecars.
+  - modified: feature_list.json (geolval-005 → passing), claude-progress.md.
+- Next candidate: `geolval-006-history-consistency` (mismatch + 8.6.4 + cross-axis with realism) — unblocks the bivariate `geol_fig06_history_vs_realism` which is the main visual claim for the article. After that `geolval-007` (summary_comparison.csv + report.md + figures) closes the TZ.

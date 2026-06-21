@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 - geolval-002 closed: connectivity for 299 models + 247 well-well matrices)",
+  "last_updated": "2026-06-21 (session 026 - geolval-005 closed: diversity spread + geological width_ratio)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1081,13 +1081,19 @@
       "area": "geology",
       "title": "Axis 3: inter-model spread + geological width_ratio",
       "user_visible_behavior": "diversity_metrics.csv: cellwise variance + descriptor variance + facies entropy per experiment and per cluster.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Controlled synthetic ensemble of constant cubes: spread = 0 in every metric.",
         "Pivot to compare against ES width_ratio sidecar metadata is present."
       ],
-      "evidence": [],
-      "notes": "Depends on geolval-001 and -002."
+      "evidence": [
+        "src/cmp_ensemble/geology/diversity.py - descriptor_spread, connectivity_spread, geological_width_ratio, build_diversity",
+        "tests/test_geology_diversity.py - 8 tests, all pass",
+        "outputs/geology_validation/diversity_descriptor_spread.csv - 48 rows",
+        "outputs/geology_validation/diversity_connectivity_spread.csv - 48 rows",
+        "outputs/geology_validation/diversity_width_ratio.csv - 12 rows (frac_largest_26 wr=0.17, mean_inj_conn wr=0.51, top1_anisotropy wr=1.81)"
+      ],
+      "notes": "Depends on geolval-001 and -002. | Closed session 026. Key finding: Exp2 systematically tightens topology metrics (frac_largest wr=0.17, mean_inj_conn wr=0.51, orientation wr=0.36) but BROADENS shape diversity (top1_anisotropy wr=1.81). Geological diversity-axis result is opposite-sign to ES forecast width_ratio (1.47/2.22/1.47) -- they measure different planes."
     },
     {
       "id": "geolval-006-history-consistency",
