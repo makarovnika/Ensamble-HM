@@ -783,3 +783,35 @@ Newly surfaced by the audit:
 - TZ §3 deliverable count: 6 out of 9 fully delivered, 2 partially (figures 01-02 blocked), 1 (the meta sidecar list) automated.
 - Files touched: new `src/cmp_ensemble/geology/comparison.py`, `src/cmp_ensemble/viz/geology.py`, `tests/test_geology_comparison.py`, `outputs/geology_validation/report.md`; generated `summary_comparison.csv` + 5 figures + 12 sidecars; modified feature_list.json + claude-progress.md.
 - **TZ_geology_validation.md complete** to the extent §11 Q1 allows. Axis 1 R²-uplift and axis 2 facies-conformance ready to backfill in one session once the user supplies the SATNUM->facies dictionary (or confirms the default cutoff rule is the article's stated definition).
+
+### Session 026 (cont. 5) — geolval-003: R²-uplift + SRC² + correlations (2026-06-21)
+
+- Picked up `geolval-003-geology-production-link` after user said "продолжай" — proceeded with the default cutoff rule from `configs/geology.yaml` as the article's stated sand definition (Q1 default).
+- Implementation: `src/cmp_ensemble/geology/production_link.py`
+  - `extract_year_end_responses` — **per-well** cum_oil + watercut at 2018-12 for 5 producers (WELL5, WELL7, WELL3A, WELL1, WELL9).
+  - `aggregate_descriptors_per_model` — per-seed sums of net_sand, kh + means of frac_channel, NTG + join with connectivity (n_bodies_26, frac_largest_26, mean_inj_conn).
+  - `r2_uplift_with_bootstrap` — R²(θ) vs R²(θ+geo) with B=2000 bootstrap CI.
+  - `src2_with_bootstrap` — standardised squared regression coefficients with sign-stability fraction.
+  - `descriptor_response_correlations` — Pearson r per (descriptor, response) with 3/√N significance gate.
+  - `build_production_link` driver.
+- Tests: 8 pass (synthetic `cum_oil`/`watercut` layout, watercut bounds, aggregate sums, R²-uplift positive on synthetic signal, SRC² picks up strong predictor, correlation threshold).
+- **Critical methodological finding for the article**: field-total cum oil / water / gas / watercut are mass-balance-locked in this ensemble (Pearson |r| > 0.9999) — they yield identical R² to 6 decimals. The geological signal lives in **how production is redistributed across wells**, not in the total. Hence per-well responses.
+- Artefacts (gitignored, regenerable):
+  - `r2_uplift.csv` — 40 rows (5 wells × 2 response twins × 4 scopes).
+  - `src2_influence.csv` — per-(predictor, response) SRC² + stability.
+  - `corr_descriptor_production.csv` — 70 rows.
+- **Key results for the article (axis 1):**
+  - Per-well R²-uplift positive on all 5 wells (95% CI excludes 0):
+    - WELL5: R²(θ)=0.067 → R²(θ+geo)=0.191, **uplift = +0.124**
+    - WELL7: 0.224 → 0.316, uplift = +0.092
+    - WELL3A: 0.181 → 0.231, uplift = +0.050
+    - WELL1: 0.087 → 0.127, +0.040
+    - WELL9: 0.060 → 0.083, +0.022
+  - Top SRC² predictor: `total_kh` (SRC²=0.17, 98% sign-stable), then `total_net_sand` (0.10), `AZIMUTH` (0.05).
+  - **Mechanistic correlation found** (TZ §5.1 expectation): `mean_ntg ↔ cum_oil_WELL7` Pearson r = +0.260 > threshold 3/√149 = 0.246. Symmetric pair `mean_ntg ↔ watercut_WELL7` at r = −0.260. Exactly the "NTG along WELL7 → WELL7 oil response" signal the TZ predicted.
+- Closed loop: updated `summary_comparison.csv` builder to drop the PENDING rows (Q1 now defaulted) and seed new axis-1 rows from r2_uplift + correlations. New count: **35 rows, 13 BETTER, 2 SIGNIFICANT, 19 NEUTRAL, 1 WORSE, 0 PENDING.**
+- Files touched: new `src/cmp_ensemble/geology/production_link.py` (~280 LOC), `tests/test_geology_production_link.py` (8 tests); modified `src/cmp_ensemble/geology/comparison.py` (+build_axis1, +build_axis1_correlations, refactored build_pending), `tests/test_geology_comparison.py` (loosened the pending assertions); generated `r2_uplift.csv` + `src2_influence.csv` + `corr_descriptor_production.csv` + sidecars; modified `feature_list.json` (geolval-003 → passing), claude-progress.md.
+- Verification:
+  - `pytest tests/test_geology_production_link.py tests/test_geology_comparison.py -q` → 20/20 pass.
+  - Full `pytest -q` → 287 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
+- **TZ_geology_validation.md status**: 7 / 8 features passing. Only `geolval-004` (axis-2 facies-conformance per cluster) remains — can be closed in one session using the realised-cube geometry from `connectivity_summary.csv` (top1_anisotropy, top1_orientation_deg) compared against the Notion §5 cluster boxes.

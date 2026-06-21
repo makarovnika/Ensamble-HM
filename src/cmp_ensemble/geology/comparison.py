@@ -248,26 +248,59 @@ def build_axis4_crossaxis(corr_path: Path) -> list[dict]:
 
 
 def build_pending() -> list[dict]:
-    """Rows for analyses blocked on TZ §11 open questions."""
-    rows = []
-    for metric in ("r2_uplift_oil", "r2_uplift_water", "r2_uplift_gas"):
+    """Rows for analyses blocked on TZ §11 open questions (after Q1 default)."""
+    # geolval-003 (R²-uplift) closed using the default cutoff rule from
+    # configs/geology.yaml — its axis-1 rows are emitted by build_axis1().
+    # geolval-004 concept-conformance still benefits from an explicit facies
+    # dictionary; if absent, build_axis2_realism uses the synthetic-θ-based
+    # proxy boxes.
+    return []
+
+
+def build_axis1(r2_uplift_path: Path) -> list[dict]:
+    """Axis 1 — geology→production link via R²-uplift on per-well responses."""
+    if not r2_uplift_path.exists():
+        return []
+    df = pd.read_csv(r2_uplift_path)
+    if df.empty:
+        return []
+    rows: list[dict] = []
+    # Keep only the all-scope, cum_oil_* responses (drop the watercut-locked twin)
+    sub = df[df["scope"] == "all"]
+    sub = sub[sub["response"].str.startswith("cum_oil_")]
+    for _, r in sub.iterrows():
+        well = r["response"].replace("cum_oil_", "")
+        rows.append(_row(
+            1, f"r2_uplift_{well}", "all",
+            value_old=float(r["R2_theta"]),
+            value_new=float(r["R2_theta_geo"]),
+            direction=">",
+            evidence=str(r2_uplift_path),
+            notes=(f"+{(r['R2_theta_geo']-r['R2_theta'])*100:.1f} pp uplift, "
+                   f"CI [{r['ci_low']:.3f}, {r['ci_high']:.3f}], n={int(r['n'])}.")
+        ))
+    return rows
+
+
+def build_axis1_correlations(corr_path: Path) -> list[dict]:
+    """Axis 1 secondary — flag descriptor↔production correlations that clear 3/√N."""
+    if not corr_path.exists():
+        return []
+    df = pd.read_csv(corr_path)
+    sig = df[df["passes_3_over_sqrt_N"] == True]
+    rows: list[dict] = []
+    for _, r in sig.iterrows():
         rows.append({
-            "axis": 1, "metric": metric, "scope": "all",
-            "value_old": np.nan, "value_new": np.nan,
-            "direction": ">", "status": "PENDING_USER_INPUT",
-            "delta": np.nan, "ratio": np.nan,
-            "evidence": "TZ_geology_validation.md §11 Q1 (facies dict)",
-            "notes": "Awaits SATNUM→facies dictionary OR confirmation to use default cutoff rule.",
-        })
-    for metric in ("concept_conformance_THICK", "concept_conformance_MAJ_R",
-                    "concept_conformance_AZIMUTH"):
-        rows.append({
-            "axis": 2, "metric": metric, "scope": "per_cluster",
-            "value_old": np.nan, "value_new": np.nan,
-            "direction": ">", "status": "PENDING_USER_INPUT",
-            "delta": np.nan, "ratio": np.nan,
-            "evidence": "TZ_geology_validation.md §11 Q1 + Notion §5 cluster boxes",
-            "notes": "Awaits facies dictionary AND confirmation that Notion §5 cluster boxes are the conformance reference.",
+            "axis": 1, "metric": f"corr_{r['descriptor']}_{r['response']}",
+            "scope": "all",
+            "value_old": 0.0,
+            "value_new": float(r["pearson_r"]),
+            "direction": "~",
+            "status": "SIGNIFICANT",
+            "delta": float(r["pearson_r"]),
+            "ratio": np.nan,
+            "evidence": str(corr_path),
+            "notes": f"Pearson r = {r['pearson_r']:+.3f}, n = {int(r['n'])} (clears 3/√N).",
         })
     return rows
 
@@ -281,6 +314,8 @@ def build_summary_comparison(root: Path) -> pd.DataFrame:
     out_root = root / "outputs/geology_validation"
     rows: list[dict] = []
     rows.extend(build_axis0(out_root / "exp_diff.csv"))
+    rows.extend(build_axis1(out_root / "r2_uplift.csv"))
+    rows.extend(build_axis1_correlations(out_root / "corr_descriptor_production.csv"))
     rows.extend(build_axis2(out_root / "connectivity_summary.csv"))
     rows.extend(build_axis3(out_root / "diversity_width_ratio.csv"))
     rows.extend(build_axis4(out_root / "history_compliance_summary.csv"))

@@ -142,16 +142,16 @@ def test_build_axis3_passes_through_width_ratios(tmp_path):
 # ──────────────────────────────────────────────────────────────────────────
 
 
-def test_build_summary_comparison_returns_non_empty_with_pending(tmp_path):
-    # Only the pending rows survive when no source artefacts are present
+def test_build_summary_comparison_handles_missing_sources(tmp_path):
+    # With no source artefacts present, the builder returns an empty
+    # DataFrame (build_pending no longer seeds rows once Q1 is defaulted).
     df = build_summary_comparison(tmp_path)
-    assert not df.empty
-    assert (df["status"] == "PENDING_USER_INPUT").any()
-    # Six pending rows are seeded by build_pending() — that's the contract
-    assert (df["status"] == "PENDING_USER_INPUT").sum() == 6
+    assert isinstance(df, pd.DataFrame)
+    # No PENDING rows anymore — Q1 was resolved via configs/geology.yaml
+    if not df.empty:
+        assert (df["status"] != "PENDING_USER_INPUT").all()
 
 
-def test_build_pending_axes_are_1_or_2():
-    rows = build_pending()
-    assert all(r["axis"] in (1, 2) for r in rows)
-    assert all(r["status"] == "PENDING_USER_INPUT" for r in rows)
+def test_build_pending_returns_empty_now():
+    """After Q1 default in configs/geology.yaml, build_pending is a no-op."""
+    assert build_pending() == []

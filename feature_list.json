@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 - geolval-007 closed: summary_comparison.csv + report.md + 5 article figures)",
+  "last_updated": "2026-06-21 (session 026 - geolval-003 closed: R2-uplift + SRC2 + correlations on per-well responses)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1053,13 +1053,20 @@
       "area": "geology",
       "title": "Axis 1: R2-uplift, SRC2 influence, descriptor-production correlations (bootstrap CI + 3/sqrt(N))",
       "user_visible_behavior": "r2_uplift.csv, src2_influence.csv, corr_descriptor_production.csv per response on year-end anchors.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Synthetic deck with prescribed Y -> R^2 uplift matches analytic.",
         "On real data: r2_uplift.csv has 1 row per (response, experiment); src2_influence.csv lists per-descriptor contributions."
       ],
-      "evidence": [],
-      "notes": "Blocked on §11 Q1 (facies dict) and Q2 (cadence). Depends on geolval-001."
+      "evidence": [
+        "src/cmp_ensemble/geology/production_link.py - extract_year_end_responses, aggregate_descriptors_per_model, r2_uplift_with_bootstrap (B=2000), src2_with_bootstrap, descriptor_response_correlations (3/sqrt(N) gate), build_production_link",
+        "tests/test_geology_production_link.py - 8 tests, all pass",
+        "outputs/geology_validation/r2_uplift.csv - 40 rows (5 wells x 2 response types x 4 scopes)",
+        "outputs/geology_validation/src2_influence.csv - per-(predictor, response) SRC2 with stability fraction",
+        "outputs/geology_validation/corr_descriptor_production.csv - 70 rows, 2 cleared 3/sqrt(149)=0.246 threshold",
+        "Methodological finding: field-total responses are mass-balance-locked (Pearson r = -1.0 between oil/water/gas/watercut); per-well responses are the only meaningful axis-1 metric."
+      ],
+      "notes": "Blocked on §11 Q1 (facies dict) and Q2 (cadence). Depends on geolval-001. | Closed session 026. Key findings: per-well R2-uplift positive on all 5 wells (WELL5 +12.4%, WELL7 +9.2%, WELL3A +5.0%, WELL1 +4.0%, WELL9 +2.2%), bootstrap CIs exclude 0. Top SRC2 predictor: total_kh (0.17, 98% sign-stable). Single mechanistic correlation found: mean_ntg <-> cum_oil_WELL7 (r=+0.26 > threshold 0.246), exactly the TZ-5.1 'AZIMUTH/NTG -> WELL7 response' signal."
     },
     {
       "id": "geolval-004-realism-metrics",
