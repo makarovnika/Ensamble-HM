@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 — geolval-001 closed: well-block descriptors for 299 models x 23 wells = 6877 rows + configs/geology.yaml)",
+  "last_updated": "2026-06-21 (session 026 - geolval-002 closed: connectivity for 299 models + 247 well-well matrices)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1033,13 +1033,19 @@
       "area": "geology",
       "title": "Connected sand geobodies + well-well connectivity",
       "user_visible_behavior": "geobody_stats.csv + connectivity_matrix_<seed>.npy; supports --connectivity {6,26}.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Synthetic 3D blob round-trips at both connectivities.",
         "Sensitivity test reports 6- vs 26-connectivity side-by-side."
       ],
-      "evidence": [],
-      "notes": "Depends on geolval-000."
+      "evidence": [
+        "src/cmp_ensemble/geology/connectivity.py - build_sand_mask, label_geobodies (6/26-conn), geobody_stats (PCA-based anisotropy + orientation), well_connectivity_matrix, connectivity_for_deck",
+        "tests/test_geology_connectivity.py - 13 tests, 100% pass (sand-mask reshape; 6 vs 26 connectivity differs on diagonal touch; PCA orientation on horizontal/diagonal lines; well-well matrix on synthetic 2-body grid)",
+        "outputs/geology_validation/connectivity_summary.csv - 299 rows (150 Exp1 + 149 Exp2): n_bodies_26, n_bodies_6, frac_sand_in_largest_{26,6}, top1 anisotropy + orientation, mean_inj_connections_per_producer",
+        "outputs/geology_validation/connectivity_matrices/ - 247 unique (exp,seed) npz files with 23x23 well-well bool matrix + well_names",
+        "outputs/geology_validation/connectivity_summary.csv.meta.yaml"
+      ],
+      "notes": "Depends on geolval-000. | Closed session 026. Key finding for article: median connectivity nearly identical (median frac_largest_26=0.999 both); the tails diverge - 2/124 Exp1 models have mean_inj_conn<1 (essentially disconnected) vs 0/123 Exp2. Two pathological Exp1 seeds (40007, 69797) jump from frac_largest 0.07-0.15 to 0.94-0.997 in Exp2."
     },
     {
       "id": "geolval-003-geology-production-link",

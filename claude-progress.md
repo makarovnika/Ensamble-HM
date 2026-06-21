@@ -678,3 +678,32 @@ Newly surfaced by the audit:
   - feature_list.json, claude-progress.md
 - Next: `geolval-002-connectivity` (connected sand geobodies + well-well matrix). Not blocked by any §11 open question — connectivity defaults set in `configs/geology.yaml`.
 - Open §11 questions standing: Q1 (SATNUM→facies dict) still needed before geolval-003/004 produce truly realistic metrics; Q3 (exported FACIES cubes) optional improvement; Q4 (truth-geology reference) optional. Q2 (year-end cadence) defaulted in geology.yaml — confirm if otherwise.
+
+### Session 026 (cont.) - geolval-002: connectivity (2026-06-21)
+
+- Picked up `geolval-002-connectivity` after geolval-001 closed. Took to passing.
+- Implementation: `src/cmp_ensemble/geology/connectivity.py`
+  - `build_sand_mask`: `NTG==1 AND PERMX>perm_cutoff` reshaped to (nz,ny,nx).
+  - `label_geobodies`: `scipy.ndimage.label` with 6- or 26-connectivity structures.
+  - `geobody_stats`: per-body bbox + PCA-based principal-axes in plan (anisotropy = max/min extent, orientation in degrees CCW from east).
+  - `well_connectivity_matrix`: 23x23 bool matrix; two wells share an edge iff at least one sand geobody is pierced by both.
+  - `connectivity_for_deck` + `connectivity_summary_row` driver.
+- Tests: `tests/test_geology_connectivity.py` - 13 tests, 100% pass in 0.76s. Covers sand-mask reshape, 6 vs 26-connectivity diagonal-touch distinction, PCA orientation on horizontal/diagonal/single-point cases, well-well matrix on 2-body synthetic grid, out-of-bounds well-cell handling.
+- Artefacts (gitignored, regenerable):
+  - `outputs/geology_validation/connectivity_summary.csv` - 299 rows, 33KB.
+  - `outputs/geology_validation/connectivity_matrices/` - 247 unique (exp,seed) npz files with `matrix` (uint8) + `well_names`. The 52-file deficit vs 299 rows is because Exp1 has duplicate-seed test decks across multiple directories; the npz key collapses them.
+  - Sidecar with key_finding payload.
+- **Key empirical finding for the article (axes 2-3):** the medians of all connectivity metrics are nearly identical between experiments (median frac_sand_in_largest_26 = 0.999 in both, median mean_inj_connections_per_producer = 6.0 in both), but the **tails diverge**:
+  - Exp1: `mean_inj_conn < 1` (essentially disconnected wells from injectors) in **2/124** matched-seed models.
+  - Exp2: **0/123** disconnected.
+  - Two pathological Exp1 seeds: 40007 (frac_largest 0.154 → 0.938 in Exp2) and 69797 (0.068 → 0.997, n_bodies 197 → 3).
+  - **Interpretation:** new methodology does not improve median connectivity (already saturated), but eliminates worst-case fragmented realizations - exactly the geological-realism axis claim.
+- Verification:
+  - `pytest tests/test_geology_connectivity.py -q` - 13/13 pass.
+  - Batch run 843s (~14 min) over 299 decks - all completed cleanly (no zombie deck), 2.7-2.8s/model.
+  - Null-byte audit on connectivity.py + test file - 0 nulls each.
+- Files touched:
+  - new: `src/cmp_ensemble/geology/connectivity.py`, `tests/test_geology_connectivity.py`.
+  - generated: `outputs/geology_validation/connectivity_summary.csv` + sidecar, `outputs/geology_validation/connectivity_matrices/exp{1,2}_<seed>.npz`.
+  - modified: feature_list.json (geolval-002 to passing), claude-progress.md (this entry).
+- Next: `geolval-005-diversity` is the natural follow-up (cellwise variance + facies entropy reusing the cubes already in memory) OR `geolval-006-history-consistency` (mismatch + regulation 8.6.4 + cross-axis with the connectivity result). Both unblocked by open §11 questions; `geolval-003/004` still blocked on Q1 (facies dict).
