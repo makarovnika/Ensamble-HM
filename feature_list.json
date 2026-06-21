@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-15 (session 025 — geolval-000 closed: GRDECL parser + Stage 0 acceptance artefacts)",
+  "last_updated": "2026-06-21 (session 026 — geolval-001 closed: well-block descriptors for 299 models x 23 wells = 6877 rows + configs/geology.yaml)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1009,14 +1009,23 @@
       "area": "geology",
       "title": "Well-block descriptors (model x well): net_sand, kh, frac_channel, mean_ntg",
       "user_visible_behavior": "descriptors_exp{1,2}.csv with sand-cutoff rule documented in configs/geology.yaml; overridable with --use-exported-cubes.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Synthetic deck: descriptors_*.csv reproduces analytical sum dz_eff and sum permx*dz_eff within 1e-6.",
         "On real Exp2/300: every well from welltrack appears in descriptors_exp2.csv.",
         "perm_cutoff calibration logged in sidecar."
       ],
-      "evidence": [],
-      "notes": "Depends on geolval-000. Sand indicator: NTG==1 AND PERMX>perm_cutoff (default; SATNUM map TBD via §11 Q1)."
+      "evidence": [
+        "src/cmp_ensemble/geology/welltrack.py — GridIndex, welltrack_to_cells, _point_in_quad, _segment_overlaps_intervals",
+        "src/cmp_ensemble/geology/descriptors.py — calibrate_perm_cutoff, compute_descriptors, descriptors_for_deck, descriptors_for_experiment",
+        "src/cmp_ensemble/io/grdecl.py::read_compdatmd — COMPDATMD MD-range parser",
+        "configs/geology.yaml — Stage-1 + Stage-2 defaults, open §11 questions slotted",
+        "tests/test_geology_descriptors.py — 11 tests, 100% pass (RLE COMPDATMD + 2x1x3 synthetic grid traversal + bi-modal cutoff + analytical descriptors)",
+        "outputs/geology_validation/descriptors_exp1.csv — 3450 rows (150 models x 23 wells)",
+        "outputs/geology_validation/descriptors_exp2.csv — 3427 rows (149 models x 23 wells)",
+        "outputs/geology_validation/descriptors_exp{1,2}.csv.meta.yaml — sidecars"
+      ],
+      "notes": "Depends on geolval-000. Sand indicator: NTG==1 AND PERMX>perm_cutoff (default; SATNUM map TBD via §11 Q1). | Closed in session 026. Acceptance: 23 wells per deck recovered; per-cell aggregates sum to analytical values on synthetic; COMPDATMD parsed from all 299 decks; calibrate_perm_cutoff splits into bi-modal-trough (~25% of decks → 428-596 mD) vs single-peak-fallback (~75% → 0 mD; PERMX==0 already encodes non-reservoir)."
     },
     {
       "id": "geolval-002-connectivity",

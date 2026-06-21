@@ -1,0 +1,111 @@
+# Geology validation pipeline defaults (TZ_geology_validation.md §§5, 7).
+#
+# Loaded by src/cmp_ensemble/geology/*. Override at the CLI level with
+# `--config configs/geology.yaml --connectivity 6 --ds 0.5` etc.
+#
+# Everything here is data-driven where possible; user-confirmed values live
+# under `open_questions:` at the bottom (TZ §11) and become active when filled.
+
+stage: geolval-001-wellblock-descriptors  # most-recent-passing feature
+seed: 42
+
+# ──────────────────────────────────────────────────────────────────────────
+# Sand-cell indicator (TZ §5.1, §5.2)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Watt-Field decks encode non-reservoir as PERMX == 0 (≈ 51 % of cells in
+# the audited Exp2/300 deck), so a positive-PERMX cell with NTG==1 is the
+# natural sand class. The bi-modality calibration is *attempted* per model
+# — when it finds a clean trough we use it; when log-PERMX is single-peaked
+# we fall back to 0 mD (the PERMX==0 fraction handles non-reservoir).
+sand_indicator:
+  rule: "NTG == 1 AND PERMX > perm_cutoff"
+  perm_cutoff:
+    calibration: bi_modal_trough_of_log10_permx
+    fallback_mD: 0.0
+    min_grid_size: 100
+    smoothing_kernel: [1, 3, 5, 3, 1]
+    n_bins: 80
+  notes: |
+    Per-model cutoff is sidecar-logged with method ("bi_modal_trough" or
+    "fallback"). The TZ §11 Q1 question (SATNUM → facies dictionary) would
+    bypass this calibration entirely once the user supplies the map.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Welltrack → cells (TZ §0.2)
+# ──────────────────────────────────────────────────────────────────────────
+welltrack:
+  ds_metres: 1.0          # MD sampling step; 1.0 gives ≈10 samples per cell
+  k_neighbors: 6          # kd-tree candidates per XY → (i, j) lookup
+  pillar_assumption: vertical_top_xy
+  # When COMPDATMD is present, only cells whose run intersects an OPEN
+  # interval contribute to net_sand_penetrated. When it is missing, every
+  # traversed cell is treated as perforated (default per TZ §0.2).
+  perforation_source_preference: [compdatmd_open_intervals, full_track]
+
+# ──────────────────────────────────────────────────────────────────────────
+# Connectivity (geolval-002)
+# ──────────────────────────────────────────────────────────────────────────
+connectivity:
+  default: 26             # 26-conn is the TZ §5.2 default
+  sensitivity_compare_with: 6
+  min_geobody_cells: 1    # report all sizes including singletons for artefact QA
+
+# ──────────────────────────────────────────────────────────────────────────
+# Statistics (TZ §5)
+# ──────────────────────────────────────────────────────────────────────────
+statistics:
+  bootstrap_B: 2000
+  significance_threshold: "3/sqrt(N)"
+  correlation_method: pearson
+
+# ──────────────────────────────────────────────────────────────────────────
+# Year-end aggregation cadence (TZ §5.1)
+# ──────────────────────────────────────────────────────────────────────────
+production_aggregation:
+  cadence: year_end
+  anchors:
+    - 2011-12-31
+    - 2012-12-31
+    - 2013-12-31
+    - 2014-12-31
+    - 2015-12-31
+    - 2016-12-31
+    - 2017-12-31
+    - 2018-12-31
+  responses: [cum_oil, cum_water, cum_gas, watercut]
+  notes: TZ §11 Q2 — defaulting to year-end; revisit if user specifies otherwise.
+
+# ──────────────────────────────────────────────────────────────────────────
+# I/O paths (relative to repo root)
+# ──────────────────────────────────────────────────────────────────────────
+paths:
+  sim_root: simulation models results
+  experiments:
+    1: simulation models results/Experiment 1
+    2: simulation models results/Experiment 2
+  artefact_root: outputs/geology_validation
+  exported_cubes_root: data/geology/cubes
+  exported_wellblocks_root: data/geology/wellblocks
+
+# ──────────────────────────────────────────────────────────────────────────
+# Open questions (TZ §11) — fill these when the user confirms
+# ──────────────────────────────────────────────────────────────────────────
+open_questions:
+  facies_dict_from_SATNUM: null     # Q1
+  exported_cubes_provided: false    # Q3 — flips welltrack source preference
+  truth_geology_reference: null     # Q4
+
+# ──────────────────────────────────────────────────────────────────────────
+# Resolved facts (Stage 0 empirical findings, session 025)
+# ──────────────────────────────────────────────────────────────────────────
+resolved:
+  grid_shape: [227, 59, 40]
+  n_cells: 535720
+  n_wells_per_model: 23
+  matched_seeds_across_experiments: 123
+  Q5_what_changed_between_experiments: |
+    Δmean and Δvar of PORO/NTG stable to ~1e-4; frac_netflag_changed =
+    0.40-0.43 — new geomodelling preserves integral proportions but
+    spatially redistributes 40-43% of net cells. Change is topological,
+    not statistical (TZ §11 Q5 closed in property space).

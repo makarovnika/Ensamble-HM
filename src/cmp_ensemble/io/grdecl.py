@@ -254,6 +254,57 @@ def read_welltrack(path: Path | str) -> dict[str, np.ndarray]:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Perforation MD intervals (COMPDATMD — tNavigator MD-based completions)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def read_compdatmd(path: Path | str) -> dict[str, list[tuple[float, float]]]:
+    """Parse ``COMPDATMD`` records into ``{well: [(md_low, md_high), …]}``.
+
+    tNavigator emits ``COMPDATMD`` (MD-range based completions) rather than the
+    classical Eclipse ``COMPDAT`` (i,j,k). Each record:
+
+      'wname' stage_brn stage_n mdl mdu md_type status filt.tbl pi diameter
+      Kh skin D-factor cf_mult DP completion /
+
+    Only ``wname``, ``mdl`` (col 4) and ``mdu`` (col 5) are kept; rows whose
+    ``status`` (col 7) is not ``OPEN`` are dropped. The terminator ``/`` ends
+    the keyword block.
+    """
+    path = Path(path)
+    text = _COMMENT.sub("", path.read_text(encoding="utf-8", errors="replace"))
+    m = re.search(r"(?m)^[ \t]*COMPDATMD\b", text)
+    if not m:
+        return {}
+    sub = text[m.end():]
+    end = re.search(r"(?m)^[ \t]*/[ \t]*$", sub)
+    block = sub[:end.start()] if end else sub
+    out: dict[str, list[tuple[float, float]]] = {}
+    for line in block.splitlines():
+        ln = line.strip().rstrip("/").strip()
+        if not ln or ln.startswith("--") or ln.startswith("COMPDATMD"):
+            continue
+        parts = ln.split()
+        if len(parts) < 7 or not parts[0].startswith("'"):
+            continue
+        # COMPDATMD record layout (one record may span multiple physical lines;
+        # only the first carries the fields we need):
+        #   parts[0]='wname'  parts[1]='1*'   parts[2]=mdl   parts[3]=mdu
+        #   parts[4]='MD'     parts[5]='OPEN' parts[6]='2*'  …
+        try:
+            well = parts[0].strip("'")
+            mdl = float(parts[2])
+            mdu = float(parts[3])
+            status = parts[5].upper()
+        except (ValueError, IndexError):
+            continue
+        if status != "OPEN":
+            continue
+        out.setdefault(well, []).append((mdl, mdu))
+    return out
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Deck inventory helpers (TZ §2.3)
 # ──────────────────────────────────────────────────────────────────────────
 

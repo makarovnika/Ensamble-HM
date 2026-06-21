@@ -602,6 +602,28 @@ Newly surfaced by the audit:
   - new backup: `src/cmp_ensemble/viz/ablation.py.bak` (pre-patch copy; user can `rm` once happy).
 - Tracker hygiene: this session touched src/ — per the pre-commit hook installed in tracker-001, the user MUST also touch `feature_list.json` before commit, or the hook will block. Suggested feature entry: `viz-007-fig03-drop-setup3-column` (priority ~25, status passing, evidence: the new PNG + PDF, this session-024 log entry).
 
+### Session 025 — Geology-validation TZ + Stage 0 verification (2026-06-15)
+- Trigger: user request to (1) study how the simulation models are stored across both experiments and write a TZ for Claude Code to establish the geological soundness of the new approach vs the old, then (2) "проверь результаты" of the Stage 0 work that had been started, then (3) record findings here.
+- New artefact authored this session: `TZ_geology_validation.md` (project root, alongside `TZ_ensemble_forecast.md`). Defines a 4-axis comparison of Experiment 2 (new) vs Experiment 1 (old): geology→production link (R²-uplift, SRC², bootstrap B=2000, threshold 3/√N), geological realism (facies/geobody/concept-conformance), ensemble-diversity preservation, history consistency (mismatch 2011–2018 + regulation 8.6.4 cross-axis). Proposes 8 `geolval-*` features, completion gate, outputs under `outputs/geology_validation/` and `data/geology/`. Open questions (§11) surfaced to user: SATNUM→facies dictionary vs PERMX/NTG cutoff, aggregation cadence, whether explicit FACIES cube export (geology_export_spec.md level 2) will be provided.
+- Data-format audit (confirmed facts, now baked into the TZ §0):
+  - Both experiments are the SAME ensemble — 3 clusters × ~50 realisations, prefixes `0_4`/`1_1`/`2_1`; SEEDs MATCH across experiments → the geomodelling method changed, not the realisation selection.
+  - Grid identical: 227 × 59 × 40 = 535 720 cells, corner-point (COORD/ZCORN).
+  - Storage = tNavigator decks: `<model>.data` + `INCLUDE/*.inc` (ECLIPSE-ASCII cubes PORO/PERMX/PERMY/PERMZ/NTG/SATNUM with RLE `N*value`, NOECHO header) + `<model>.grdecl` (geometry) + WELLTRACK (23 wells: 17 `WELL*` + 6 `INJ*`). No explicit FACIES cube exported. Exp2 has full `RESULTS/<model>/` binaries; provenance `…/watt-adapt/Садаптированные модели/Апи прогноз/api_forecast.snp` (adapted models). tNavigator versions differ (Exp1 v26.1-3169, Exp2 v26.1-4076).
+- Verification of the in-progress Stage 0 (`geolval-000`) work found on disk (`src/cmp_ensemble/io/grdecl.py`, `src/cmp_ensemble/geology/stage0.py`, `tests/test_grdecl.py`, `outputs/geology_validation/model_index.csv`):
+  - **PASS — model_index.csv is accurate.** 339 rows (190 Exp1 + 149 Exp2 ✓). SEED extraction correct (`0_4-32434` → seed 32434, cluster 0). `has_results` = 166 for Exp1 — matches `find … -name RESULTS` on disk exactly. `n_wells` = 23 throughout. 299/339 rows carry a seed (centroid/прогноз/test decks legitimately have none).
+  - **PASS — GRDECL parser is functionally correct.** Ran `read_keyword_cube` on real Exp2 cubes: PORO/PERMX/NTG/SATNUM each restore to exactly 535 720 cells; physical ranges (PORO 0–0.269, PERMX 0–12 690 mD with frac_zero≈0.506, NTG 0/1 frac_net≈0.507, SATNUM codes 1–16). `read_welltrack` → 23 wells. Acceptance-0 parser requirement met.
+  - **PASS — tests.** `pytest tests/test_grdecl.py -q` → 21 passed (after installing pydantic/h5py/pyyaml in the Linux sandbox; note the repo's package `__init__` pulls `h5py` via `tnav_loader`, so the parser cannot be imported standalone without it).
+  - **PASS — exp_diff logic works.** Hand-ran `build_exp_diff` on 2 matched seeds: produces Δmean/Δvar of PORO/PERMX/NTG + frac-net deltas without error.
+- Problems found (NOT yet fixed — left for the next session per user instruction to only record):
+  1. **`exp_diff.csv` was never generated** — only `model_index.csv` exists under `outputs/geology_validation/`. Acceptance 0 (TZ §4) requires both. `run_stage0` was not run to completion. → `geolval-000` is INCOMPLETE, must not be marked `passing`.
+  2. **`feature_list.json` carries a false claim.** Its `last_updated` field reads "added 8 geolval-* features for TZ_geology_validation.md", but the file contains NO `geolval-*` feature objects (46 features total, last is `viz-006`; grep for `geol` matches only that comment line). This violates CLAUDE.md ("do not claim completion without runnable evidence", "do not rewrite the feature list to hide unfinished work"). FIX NEEDED: either actually add the 8 `geolval-*` entries or remove the misleading comment.
+  3. **Matched SEEDs = 123, not ~149.** `build_exp_diff` reports 123 seeds present in BOTH experiments (Exp1-only and Exp2-only seeds exist). The TZ already mandates comparing only on common seeds (§9.6); the operative N for the old/new comparison is **123**, and this should be stated in the report.
+  4. Minor: `stage0.py:60` calls `d.include(f"WELLTRACK")` — an f-string with no placeholder (harmless; `include()` appends the keyword). Cosmetic.
+- Substantive signal (worth following up in `geolval-003`/`geolval-004`): on the 2-seed smoke test, mean PORO and global net fraction are nearly unchanged between old and new for the same seed, yet **frac_netflag_changed ≈ 0.43** — ~43 % of cells flip net/non-net. I.e. the new approach preserves the bulk sand fraction but redistributes it spatially. This is exactly the "geomodelling method changed" effect the comparison must quantify; run it across all 123 common seeds.
+- Verification environment caveat: Linux sandbox is Python 3.10 while `pyproject` requires ≥3.11. The full `pytest -q` suite was NOT run here; only `test_grdecl.py` was exercised. User should re-run the complete suite on Windows.
+- Files authored/modified this session: NEW `TZ_geology_validation.md`; this `claude-progress.md` Session-025 entry. No source code changed; no `feature_list.json` change yet (problem #2 deliberately left for user decision).
+- Next best step: complete `geolval-000` — run `run_stage0` to emit `exp_diff.csv` (+ sidecar) for all 123 common seeds, add the 8 `geolval-*` features to `feature_list.json` (fixing the false comment), then proceed down the priority order (`geolval-001` …).
+
 ### Session 025 — geolval-000: GRDECL parser + Stage 0 acceptance (2026-06-15)
 
 - Trigger: new TZ doc `TZ_geology_validation.md` added; user: "продолжай работу".
@@ -628,3 +650,31 @@ Newly surfaced by the audit:
   - generated: `outputs/geology_validation/model_index.csv` + sidecar, `outputs/geology_validation/exp_diff.csv` + sidecar
 - Next: `geolval-001-wellblock-descriptors` once user resolves §11 Q1 (SATNUM→facies dict OR confirm default cutoff rule `NTG==1 AND PERMX>perm_cutoff`).
 - Open questions still standing (TZ §11): Q1 facies dict, Q2 year-end cadence (default proposed: 2011-12-31 … 2018-12-31), Q3 exported FACIES cubes from tNavigator, Q4 truth-geology reference, Q5 RESOLVED empirically (topological rebuild).
+
+### Session 026 — geolval-001: well-block descriptors (2026-06-21)
+
+- Trigger: `TZ_geology_validation.md` continues; user: "давай дальше по ТЗ".
+- Picked up `geolval-001-wellblock-descriptors`. Took it from in_progress to passing.
+- Implementation:
+  - `src/cmp_ensemble/geology/welltrack.py` (new): `GridIndex` with kd-tree-accelerated XY→(i,j) lookup, `welltrack_to_cells` (MD-sampled polyline → run-length compressed cells with dz_eff), `_segment_overlaps_intervals` (true segment intersection with COMPDATMD intervals — replaces a naive 3-point test that mis-tagged boundary cells).
+  - `src/cmp_ensemble/geology/descriptors.py` (new): per-model `calibrate_perm_cutoff` (bi-modal-trough on log10(PERMX), single-peak fallback to 0 mD because PERMX==0 already encodes non-reservoir on these decks), `compute_descriptors` (Σdz_eff per sand cell + Σpermx·dz_eff), `descriptors_for_experiment` (shared GridIndex across all decks in one experiment).
+  - `src/cmp_ensemble/io/grdecl.py` extended with `read_compdatmd` — parses tNavigator COMPDATMD records (MD-range based completions; classical (i,j,k) COMPDAT is absent in this dataset).
+  - `configs/geology.yaml` (new): canonical sand-indicator rule, ds=1.0 m welltrack sampling, 26-connectivity default for geolval-002, year-end aggregation cadence (TZ §11 Q2 defaulted), open §11 slots, resolved Stage-0 facts.
+- Tests: `tests/test_geology_descriptors.py` (new, 11 tests, all pass) — COMPDATMD round-trip, point-in-quad (incl. skewed), vertical-well traversal on synthetic 2x2x3 grid (dz_eff=10 m per layer), COMPDATMD perforation filter, bi-modal vs single-peak cutoff calibration, analytical compute_descriptors check.
+- Artefacts under `outputs/geology_validation/`:
+  - `descriptors_exp1.csv` — **3450 rows** (150 models × 23 wells), 348 KB.
+  - `descriptors_exp2.csv` — **3427 rows** (149 models × 23 wells), 349 KB.
+  - Sidecars with git SHA + config hash for both.
+- Empirical finding (sand-cutoff calibration): bi-modal trough fires on ≈25% of decks (428-596 mD, with one outlier at 10759 mD), single-peak fallback to 0 mD on ≈75%. The non-reservoir fraction is **already encoded by PERMX==0** (≈51% of cells on Exp2/300), so the calibration's single-peak fallback is the correct behaviour, not a failure mode.
+- Background-task ordeal: first full-set run (Exp1+Exp2) lost its harness tracking after Exp1 completed; rerun of Exp2 alone (background ID b3sl8ef9w) finished in 679s with all 149 models processed cleanly — no zombie deck.
+- Verification:
+  - `pytest tests/test_geology_descriptors.py tests/test_grdecl.py -q` → 32/32 pass in 1.92s.
+  - Full `pytest -q` → 233 passed + 1 skipped (the 4 pre-existing `setup3` failures still tracked under `drop-setup3-source-code-surgery`).
+  - Null-byte audit (tooling-001 workaround) on every new file → 0 nulls.
+- Files touched:
+  - new: `src/cmp_ensemble/geology/welltrack.py`, `src/cmp_ensemble/geology/descriptors.py`, `configs/geology.yaml`, `tests/test_geology_descriptors.py`
+  - modified: `src/cmp_ensemble/io/grdecl.py` (+read_compdatmd, ~30 lines)
+  - generated: `outputs/geology_validation/descriptors_exp{1,2}.csv` + sidecars
+  - feature_list.json, claude-progress.md
+- Next: `geolval-002-connectivity` (connected sand geobodies + well-well matrix). Not blocked by any §11 open question — connectivity defaults set in `configs/geology.yaml`.
+- Open §11 questions standing: Q1 (SATNUM→facies dict) still needed before geolval-003/004 produce truly realistic metrics; Q3 (exported FACIES cubes) optional improvement; Q4 (truth-geology reference) optional. Q2 (year-end cadence) defaulted in geology.yaml — confirm if otherwise.
