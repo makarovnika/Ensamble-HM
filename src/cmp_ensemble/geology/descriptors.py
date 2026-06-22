@@ -52,6 +52,7 @@ def calibrate_perm_cutoff(
     permx: np.ndarray,
     fallback_mD: float = 0.0,
     min_grid_size: int = 100,
+    sanity_cap_percentile: float = 99.0,
 ) -> float:
     """Find the bi-modality trough in ``log10(PERMX[PERMX > 0])``.
 
@@ -84,6 +85,16 @@ def calibrate_perm_cutoff(
     trough = a + int(np.argmin(smooth[a:b + 1]))
     cutoff_log = float(edges[trough + 1])
     cutoff = float(10 ** cutoff_log)
+    # AUDIT sanity cap (docs/geology_audit.md Issue 1):
+    # On 2 seeds the bi-modal detector latched on noisy upper tail and
+    # returned cutoff = 10760 mD, which rejected 99.9% of reservoir cells.
+    cap = float(np.percentile(pos, sanity_cap_percentile))
+    if cutoff > cap:
+        log.warning(
+            f"calibrate_perm_cutoff: bi-modal trough at {cutoff:.1f} mD > "
+            f"{sanity_cap_percentile:.0f}th percentile of PERMX>0 ({cap:.1f} mD) "
+            f"— rejecting as algorithmic artefact, falling back to {fallback_mD}.")
+        return float(fallback_mD)
     log.info(f"calibrate_perm_cutoff: bi-modal trough at log10={cutoff_log:.3f} "
              f"→ {cutoff:.3f} mD")
     return cutoff

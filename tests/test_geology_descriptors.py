@@ -180,6 +180,24 @@ def test_calibrate_perm_cutoff_tiny_array():
                                   fallback_mD=42.0) == 42.0
 
 
+def test_calibrate_perm_cutoff_sanity_cap_rejects_extreme_outlier():
+    """AUDIT Issue 1: bi-modal detector latched on noisy upper edge on 2
+    Exp1 seeds, returning cutoff > 99th-percentile of PERMX>0. The sanity
+    cap must catch that and fall back."""
+    rng = np.random.default_rng(7)
+    # A distribution skewed so that one fake bimodal trough is at the upper end.
+    # Massive concentration of values around 200 mD, a sparse tail to 12 000.
+    body = rng.normal(loc=2.3, scale=0.2, size=4000)
+    tail = rng.normal(loc=4.0, scale=0.05, size=20)       # tail "peak"
+    body2 = rng.normal(loc=3.9, scale=0.05, size=20)      # to make 2 maxima
+    permx = 10 ** np.concatenate([body, tail, body2])
+    cutoff = calibrate_perm_cutoff(permx, fallback_mD=0.0,
+                                    sanity_cap_percentile=99.0)
+    # The detector should reject a 99th-percentile-exceeding cutoff
+    p99 = float(np.percentile(permx[permx > 0], 99))
+    assert cutoff <= p99 or cutoff == 0.0
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # compute_descriptors — analytical check
 # ──────────────────────────────────────────────────────────────────────────

@@ -840,3 +840,19 @@ Newly surfaced by the audit:
 - Files touched: new `src/cmp_ensemble/geology/realism.py`, `tests/test_geology_realism.py`; modified `src/cmp_ensemble/geology/comparison.py` (+build_axis2_conformance); generated 3 CSVs + 3 sidecars + refreshed summary_comparison sidecar; modified `feature_list.json` (geolval-004 → passing), claude-progress.md.
 - Verification: `pytest tests/test_geology_realism.py -q` → 6/6 in 0.40s. Full `pytest -q` → 293 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
 - **TZ_geology_validation.md fully delivered: 8/8 geolval-* features passing.**
+
+### Session 027 - AUDIT remediation (strategy C: transparent A/B) (2026-06-22)
+
+- Trigger: user requested critical honest review; chose "Strategy C - keep both numbers side by side" for remediation.
+- Implementation summary:
+  - `calibrate_perm_cutoff` gained `sanity_cap_percentile=99.0` - rejects bi-modal trough results exceeding 99th-percentile of PERMX>0.
+  - `_fit_r2_cv` added; `r2_uplift_with_bootstrap` now returns R2_theta_cv, R2_theta_geo_cv, uplift_cv alongside in-sample columns.
+  - `build_production_link` also emits per-well `ntg_at_<well>` correlation rows.
+  - `build_axis2` accepts `cutoff_method` label, builder emits both default-cutoff and *_audit_fixed rows.
+  - Background re-run (task bffphtjgf, 813s) produced `connectivity_summary_fixed_cutoff.csv` with cutoff=0.
+- After audit corrections, the article's surviving claims:
+  1. Stage-0 topological churn (40-43% net-flag flips) - unaffected.
+  2. Concept conformance: cluster-2 all_three pass = 2% - independent of cubes/cutoffs.
+  3. History mismatch reduction (cluster 2 8.6.4 30 to 92%, cross-axis r near zero).
+  4. The cluster-2 narrative: concept conformance + ES-update improvement converge on the same cluster.
+- pytest -q: 297 passed + 1 skipped (+4 vs pre-audit; 4 pre-existing setup3 failures unchanged).

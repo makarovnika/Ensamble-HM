@@ -127,6 +127,32 @@ def test_r2_uplift_nan_when_too_few_samples():
     assert pd.isna(r["R2_theta"])
 
 
+def test_r2_uplift_returns_cv_columns():
+    """AUDIT (docs/geology_audit.md Issue 2): r2_uplift must also expose
+    cross-validated uplift to expose in-sample overfitting."""
+    rng = np.random.default_rng(0)
+    n = 80
+    X_theta = rng.normal(size=(n, 9))
+    X_geo = rng.normal(size=(n, 3))
+    y = 0.2 * X_theta[:, 0] + 1.5 * X_geo[:, 0] + 0.3 * rng.normal(size=n)
+    r = r2_uplift_with_bootstrap(X_theta, X_geo, y, B=20)
+    for k in ("R2_theta_cv", "R2_theta_geo_cv", "uplift_cv"):
+        assert k in r, f"missing {k} column"
+        assert not pd.isna(r[k])
+
+
+def test_cv_uplift_can_be_negative_with_useless_predictors():
+    """Out-of-sample uplift must be ≤ in-sample when geo features are noise."""
+    rng = np.random.default_rng(1)
+    n = 60
+    X_theta = rng.normal(size=(n, 9))
+    X_geo_noise = rng.normal(size=(n, 7))   # pure noise
+    y = 0.5 * X_theta[:, 0] + 0.3 * rng.normal(size=n)
+    r = r2_uplift_with_bootstrap(X_theta, X_geo_noise, y, B=30)
+    # In-sample inflated; CV should detect the overfit.
+    assert r["uplift_cv"] < r["uplift"]
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # src2_with_bootstrap
 # ──────────────────────────────────────────────────────────────────────────

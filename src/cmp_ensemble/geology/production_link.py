@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
 log = logging.getLogger(__name__)
@@ -172,8 +173,28 @@ GEO_COLS = [
 
 
 def _fit_r2(X: np.ndarray, y: np.ndarray) -> float:
+    """**In-sample** R² — known to over-fit at n ~ p, kept for back-compat."""
     X = StandardScaler().fit_transform(X)
     return float(LinearRegression().fit(X, y).score(X, y))
+
+
+def _fit_r2_cv(X: np.ndarray, y: np.ndarray, k: int = 5, seed: int = 42) -> float:
+    """K-fold cross-validated R² — the honest out-of-sample metric.
+
+    Standardizer is fit on the training fold only (no leakage). Required
+    after the audit (docs/geology_audit.md Issue 2) which showed that
+    in-sample uplift inflated by p/n ≈ 11% on n=149, p=16.
+    """
+    if len(y) < k * 2:
+        return float("nan")
+    kf = KFold(n_splits=k, shuffle=True, random_state=seed)
+    scores = []
+    for tr, te in kf.split(X):
+        scaler = StandardScaler().fit(X[tr])
+        Xs_tr, Xs_te = scaler.transform(X[tr]), scaler.transform(X[te])
+        m = LinearRegression().fit(Xs_tr, y[tr])
+        scores.append(m.score(Xs_te, y[te]))
+    return float(np.mean(scores))
 
 
 def _fit_src2(X: np.ndarray, y: np.ndarray, names: list[str]) -> dict[str, float]:
@@ -214,8 +235,14 @@ def r2_uplift_with_bootstrap(
     uplifts = uplifts[~np.isnan(uplifts)]
     ci_low = float(np.percentile(uplifts, 2.5)) if uplifts.size else float("nan")
     ci_high = float(np.percentile(uplifts, 97.5)) if uplifts.size else float("nan")
+    # AUDIT addition (docs/geology_audit.md Issue 2): also report 5-fold CV
+    # R² alongside the in-sample numbers so the article can compare them.
+    r2_theta_cv = _fit_r2_cv(X_theta, y, k=5, seed=seed)
+    r2_full_cv = _fit_r2_cv(X_full, y, k=5, seed=seed)
     return {"R2_theta": r2_theta, "R2_theta_geo": r2_full, "uplift": uplift,
-            "ci_low": ci_low, "ci_high": ci_high, "n": int(n)}
+            "ci_low": ci_low, "ci_high": ci_high, "n": int(n),
+            "R2_theta_cv": r2_theta_cv, "R2_theta_geo_cv": r2_full_cv,
+            "uplift_cv": r2_full_cv - r2_theta_cv}
 
 
 def src2_with_bootstrap(
@@ -364,6 +391,34 @@ def build_production_link(
 
     # Correlations
     corr_df = descriptor_response_correlations(joined, available_geo, response_cols)
+    # AUDIT (docs/geology_audit.md Issue 3): the "mean_ntg ↔ WELL7" sub-
+    # mechanistic claim was actually correlating a global aggregate, not a
+    # per-well signal. Add proper per-well NTG correlations as their own rows
+    # so the article can see the true mechanism strength alongside the global.
+    per_well_rows = []
+    for resp in response_cols:
+        if not resp.startswith("cum_oil_"):
+            continue
+        well = resp.replace("cum_oil_", "")
+        ntg_w = descs[descs["well"] == well][["seed", "mean_ntg_along_well"]] \
+            .rename(columns={"mean_ntg_along_well": f"ntg_at_{well}"})
+        sub = joined.merge(ntg_w, left_on="seed_real", right_on="seed",
+                            how="left", suffixes=("", "_w"))
+        sub = sub[[f"ntg_at_{well}", resp]].dropna()
+        if len(sub) < 3:
+            continue
+        r = float(np.corrcoef(sub[f"ntg_at_{well}"], sub[resp])[0, 1])
+        per_well_rows.append({
+            "descriptor": f"ntg_at_{well}",
+            "response": resp,
+            "n": len(sub),
+            "pearson_r": r,
+            "abs_r": abs(r),
+            "passes_3_over_sqrt_N": abs(r) >= 3.0 / np.sqrt(len(sub)),
+        })
+    if per_well_rows:
+        corr_df = pd.concat([corr_df, pd.DataFrame(per_well_rows)],
+                             ignore_index=True).sort_values("abs_r", ascending=False)
     threshold = 3.0 / np.sqrt(len(joined)) if len(joined) else float("nan")
     return ProductionLinkArtefacts(
         r2_uplift=pd.DataFrame(rows_uplift),

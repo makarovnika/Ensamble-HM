@@ -100,8 +100,15 @@ def build_axis0(exp_diff_path: Path) -> list[dict]:
     return rows
 
 
-def build_axis2(connectivity_path: Path) -> list[dict]:
-    """Axis 2 = geological realism via connectivity (per-experiment medians)."""
+def build_axis2(connectivity_path: Path,
+                 cutoff_method: str = "bi_modal_with_cap") -> list[dict]:
+    """Axis 2 = geological realism via connectivity (per-experiment medians).
+
+    ``cutoff_method`` is a label propagated into the ``notes`` column so the
+    article can show side-by-side how the headline numbers shift between
+    the original bi-modal-trough calibration (Issue 1 of the audit) and the
+    fixed cutoff = 0 mD method.
+    """
     if not connectivity_path.exists():
         return []
     df = pd.read_csv(connectivity_path)
@@ -357,7 +364,17 @@ def build_summary_comparison(root: Path) -> pd.DataFrame:
     rows.extend(build_axis0(out_root / "exp_diff.csv"))
     rows.extend(build_axis1(out_root / "r2_uplift.csv"))
     rows.extend(build_axis1_correlations(out_root / "corr_descriptor_production.csv"))
-    rows.extend(build_axis2(out_root / "connectivity_summary.csv"))
+    rows.extend(build_axis2(out_root / "connectivity_summary.csv",
+                              cutoff_method="bi_modal_with_cap (default)"))
+    # AUDIT row set: same axis-2 metrics with cutoff=0 — emit as
+    # extra rows tagged "audit_fixed" so the article shows the A/B contrast.
+    fixed_path = out_root / "connectivity_summary_fixed_cutoff.csv"
+    if fixed_path.exists():
+        for r in build_axis2(fixed_path, cutoff_method="fixed_cutoff_0_mD (audit)"):
+            r["metric"] = r["metric"] + "_audit_fixed"
+            r["notes"] = ("AUDIT-corrected row (cutoff=0 mD, no calibration). "
+                          + r["notes"])
+            rows.append(r)
     rows.extend(build_axis2_conformance(out_root / "concept_conformance.csv"))
     rows.extend(build_axis3(out_root / "diversity_width_ratio.csv"))
     rows.extend(build_axis4(out_root / "history_compliance_summary.csv"))
