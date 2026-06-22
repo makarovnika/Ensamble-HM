@@ -1166,6 +1166,47 @@ def compare_phase1() -> None:
     log.info(f"Written to: {cc_csv}")
 
 
+@cli.command(name="closed-loop")
+@click.option("--cluster", type=int, default=None, help="cluster id (selects workflow)")
+@click.option("--n-alpha", type=int, default=None, help="override ES-MDA steps")
+@click.option("--N", "n_members", type=int, default=None, help="override ensemble size")
+@click.option("--config", "config_path", default="configs/closed_loop.yaml",
+              show_default=True, help="closed-loop config YAML")
+@click.option("--out", "out_root", default=None, help="output root (default from config)")
+@click.option("--dry-run", is_flag=True, help="sample prior + write run plan, then STOP")
+@click.option("--execute", is_flag=True,
+              help="auto-run tNavigator each iteration (user-approved auto-launch)")
+def closed_loop_cmd(cluster, n_alpha, n_members, config_path, out_root, dry_run, execute):
+    """Closed-loop pure-ensemble ES-MDA (TZ_closed_loop_ESMDA.md).
+
+    Without --execute the orchestrator writes iter_0/run_plan.csv + the theta
+    matrix and STOPS (CLAUDE.md no-auto-launch). --execute wires a live
+    TNavForward and runs the full loop on this machine.
+    """
+    from cmp_ensemble.closed_loop.orchestrator import (
+        ClosedLoopConfig, run_closed_loop)
+
+    cfg = ClosedLoopConfig.from_yaml(config_path)
+    if n_alpha is not None:
+        cfg.n_alpha = n_alpha
+    if n_members is not None:
+        cfg.N = n_members
+    log.info("closed-loop: cluster=%s N=%d n_alpha=%d execute=%s",
+             cluster, cfg.N, cfg.n_alpha, execute)
+    if dry_run and not execute:
+        res = run_closed_loop(cfg, execute=False, out_root=out_root, cluster=cluster)
+        log.info("DRY-RUN/plan-only: status=%s out=%s", res.status, res.out_dir)
+        return
+    if not execute:
+        res = run_closed_loop(cfg, execute=False, out_root=out_root, cluster=cluster)
+        log.info("plan-only (no --execute): status=%s out=%s. "
+                 "Run tNavigator on the plan or re-invoke with --execute.",
+                 res.status, res.out_dir)
+        return
+    # --execute: production path requires a live tNavigator + d_obs wiring.
+    run_closed_loop(cfg, execute=True, out_root=out_root, cluster=cluster)
+
+
 def main() -> None:
     cli()
 

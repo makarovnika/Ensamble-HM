@@ -1,0 +1,168 @@
+"""Closed-loop ES-MDA orchestrator (CL-E, TZ_closed_loop_ESMDA.md sections 6, 10).
+
+run_closed_loop drives the full cycle:
+
+    sample_prior(N) -> Theta0
+    repeat i = 0 .. n_alpha-1:
+        D_i      = forward(Theta_i)          # tNavigator (or test forward)
+        Theta_i1 = es_update(Theta_i, D_i)   # one MDA step
+        checkpoint(outputs/closed_loop/iter_i/)
+    Theta_post -> forecast -> artifacts
+
+Run policy (section 10): by default the orchestrator only *plans* -- it writes
+iter_0/run_plan.csv + the theta-matrix and STOPs, leaving the simulator to the
+user (CLAUDE.md no-auto-launch). execute=True (the user-approved --execute flag)
+wires a real TNavForward and runs the loop. For tests a forward model is injected
+directly, so the whole loop runs in-process in well under 30 s.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Sequence
+
+import numpy as np
+import yaml
+
+from cmp_ensemble.closed_loop.esmda import esmda
+from cmp_ensemble.closed_loop.prior import PriorResult, sample_prior
+from cmp_ensemble.metadata import write_sidecar
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class ClosedLoopConfig:
+    """Subset of configs/closed_loop.yaml the orchestrator needs."""
+
+    N: int = 150
+    seed: int = 42
+    n_alpha: int = 4
+    weights: str = "uniform"
+    localize: bool = True
+    localization_factor: float = 3.0
+    localization_method: str = "hard"
+    subspace_energy: float = 0.99
+    theta_schema: str = "configs/closed_loop_theta_schema.yaml"
+    checkpoint_dir: str = "outputs/closed_loop"
+    cluster_workflows: dict = field(default_factory=dict)
+    raw: dict = field(default_factory=dict)
+
+    @classmethod
+    def from_yaml(cls, path):
+        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        ens, mda = raw.get("ensemble", {}), raw.get("esmda", {})
+        return cls(
+            N=int(ens.get("N", 150)),
+            seed=int(raw.get("experiment", {}).get("seed", 42)),
+            n_alpha=int(mda.get("n_alpha", 4)),
+            weights=mda.get("weights", "uniform"),
+            localize=bool(mda.get("localize", True)),
+            localization_factor=float(mda.get("localization_factor", 3.0)),
+            localization_method=mda.get("localization_method", "hard"),
+            subspace_energy=float(mda.get("subspace_energy", 0.99)),
+            theta_schema=ens.get("theta_schema", "configs/closed_loop_theta_schema.yaml"),
+            checkpoint_dir=raw.get("checkpoint", {}).get("dir", "outputs/closed_loop"),
+            cluster_workflows=raw.get("tnav", {}).get("cluster_workflows", {}),
+            raw=raw,
+        )
+
+
+@dataclass
+class ClosedLoopResult:
+    status: str                              # "planned" | "completed"
+    out_dir: Path
+    theta_names: list
+    Theta_post: np.ndarray | None = None
+    misfit_history: list = field(default_factory=list)
+    n_iter: int = 0
+
+
+def write_run_plan(out_dir, iter_i, Theta, names, *, cluster=None, workflow=None):
+    """Write run_plan.csv (one row per member) + the theta-matrix for one iter."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    theta_path = out_dir / "theta.npy"
+    np.save(theta_path, Theta)
+    np.save(out_dir / "theta_names.npy", np.array(list(names)))
+    plan = out_dir / "run_plan.csv"
+    lines = ["member,model_id,cluster,workflow"]
+    cl = "" if cluster is None else str(cluster)
+    wf = workflow or ""
+    for m in range(Theta.shape[0]):
+        lines.append(f"{m},{m},{cl},{wf}")
+    plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_sidecar(theta_path, extra={"iter": int(iter_i), "N": int(Theta.shape[0])})
+    log.info("run plan written: %s (%d members)", plan, Theta.shape[0])
+    return plan
+
+
+def checkpoint_iter(out_root, i, Theta, D, misfit, *, config=None):
+    """Checkpoint one ES-MDA iteration for crash recovery (section 6)."""
+    d = Path(out_root) / f"iter_{i}"
+    d.mkdir(parents=True, exist_ok=True)
+    np.save(d / "Theta.npy", Theta)
+    np.save(d / "D.npy", D)
+    (d / "meta.yaml").write_text(
+        yaml.safe_dump(
+            {"iter": int(i), "misfit": float(misfit), "N": int(Theta.shape[0]),
+             "n_z": int(Theta.shape[1]), "n_d": int(D.shape[1]),
+             "written_at_utc": datetime.now(timezone.utc).isoformat()},
+            sort_keys=False, allow_unicode=True),
+        encoding="utf-8")
+    log.info("checkpoint iter %d: misfit=%.4g -> %s", i, misfit, d)
+    return d
+
+
+def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
+                    execute=False, out_root=None, cluster=None):
+    """Run (or plan) the closed-loop ES-MDA experiment."""
+    out_root = Path(out_root or config.checkpoint_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    if prior is None:
+        prior = sample_prior(config.theta_schema, config.N, seed=config.seed)
+    Theta0, names = prior.Theta, prior.names
+    workflow = config.cluster_workflows.get(cluster) if cluster is not None else None
+
+    if forward is None and not execute:
+        write_run_plan(out_root / "iter_0", 0, Theta0, names,
+                       cluster=cluster, workflow=workflow)
+        log.warning("Plan-only: wrote %s/iter_0/run_plan.csv and STOPPED. "
+                    "Run tNavigator on the plan, or re-invoke with --execute.", out_root)
+        return ClosedLoopResult(status="planned", out_dir=out_root,
+                                theta_names=list(names))
+
+    if forward is None and execute:
+        raise NotImplementedError(
+            "Production --execute requires a wired TNavForward (open_session + "
+            "run_ensemble + collect_results) on the run machine; pass forward=...")
+    if d_obs is None or C_dd is None:
+        raise ValueError("d_obs and C_dd are required to run the loop")
+
+    def _on_step(i, Theta_i, D_i, misfit_i):
+        checkpoint_iter(out_root, i, Theta_i, D_i, misfit_i, config=config.raw)
+
+    res = esmda(
+        Theta0, forward, np.asarray(d_obs, float), np.asarray(C_dd, float),
+        n_alpha=config.n_alpha, localize=config.localize,
+        localization_factor=config.localization_factor,
+        localization_method=config.localization_method,
+        subspace_energy=config.subspace_energy, seed=config.seed, on_step=_on_step)
+
+    post_path = out_root / "Theta_post.npy"
+    np.save(post_path, res.Theta_post)
+    np.save(out_root / "theta_names.npy", np.array(list(names)))
+    np.save(out_root / "misfit_history.npy", np.array(res.misfit_history))
+    write_sidecar(post_path, config=config.raw, seed=config.seed,
+                  extra={"n_alpha": config.n_alpha,
+                         "misfit_first": float(res.misfit_history[0]),
+                         "misfit_last": float(res.misfit_history[-1]),
+                         "localization_applied": bool(res.localization_applied)})
+    log.info("closed loop done: misfit %.4g -> %.4g, posterior %s",
+             res.misfit_history[0], res.misfit_history[-1], post_path)
+    return ClosedLoopResult(status="completed", out_dir=out_root,
+                            theta_names=list(names), Theta_post=res.Theta_post,
+                            misfit_history=res.misfit_history, n_iter=config.n_alpha)

@@ -12,12 +12,19 @@ from cmp_ensemble.closed_loop.forward import (
     TNavForward,
 )
 from cmp_ensemble.closed_loop.prior import PriorResult, sample_prior
+from cmp_ensemble.closed_loop.orchestrator import (
+    ClosedLoopConfig,
+    ClosedLoopResult,
+    run_closed_loop,
+)
 from cmp_ensemble.closed_loop.results_reader import (
     assemble_dsim,
     read_cumulative_dsim,
 )
 
 __all__ = [
+    "ClosedLoopConfig",
+    "ClosedLoopResult",
     "ESMDAResult",
     "ForwardModel",
     "LinearGaussianForward",
@@ -26,6 +33,7 @@ __all__ = [
     "assemble_dsim",
     "esmda",
     "read_cumulative_dsim",
+    "run_closed_loop",
     "sample_prior",
     "uniform_alphas",
 ]

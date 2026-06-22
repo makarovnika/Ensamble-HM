@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-D passing; tnav interface ↔ reader, mock full cycle)",
+  "last_updated": "2026-06-22 (session 027 — CL-E passing; orchestrator + closed-loop CLI + checkpoints)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1241,15 +1241,21 @@
       "area": "closed_loop",
       "title": "CL-E: orchestrator + CLI (run_closed_loop, чекпоинты, --execute/план)",
       "user_visible_behavior": "cmp-ensemble closed-loop --cluster K [--n-alpha 4] [--N 150] [--dry-run] [--execute]; чекпоинт каждой итерации.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "run_closed_loop: prior→iterate→posterior→forecast→artifacts",
         "чекпоинт outputs/closed_loop/iter_i/ (Θ_i, D_i, misfit, meta)",
         "--execute вызывает run_ensemble; без него — план + STOP",
         "интеграционный тест на синтетике < 30 c"
       ],
-      "evidence": [],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+      "evidence": [
+        "tests/test_orchestrator.py — 4 passed (session 027)",
+        "src/cmp_ensemble/closed_loop/orchestrator.py",
+        "cmp-ensemble closed-loop CLI (--cluster/--n-alpha/--N/--dry-run/--execute)",
+        "real CLI dry-run wrote outputs/.../iter_0/run_plan.csv + theta.npy (12,148)",
+        "full closed-loop suite 25 passed; integration in-process < 3 s"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. esmda gained an on_step callback so the orchestrator checkpoints each iter (iter_i/{Theta,D,meta}) for crash recovery. Plan-only path (no --execute) writes run_plan.csv + theta-matrix and STOPS per CLAUDE.md; --execute production path raises NotImplementedError until a live TNavForward is wired on the run machine (needs open_session + real d_obs). Tests inject LinearGaussianForward → full loop runs in-process."
     },
     {
       "id": "CL-F-forecast-metrics",

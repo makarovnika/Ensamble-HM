@@ -74,6 +74,7 @@ def esmda(
     subspace_energy: float = 0.99,
     seed: int = 42,
     keep_history: bool = True,
+    on_step=None,
 ) -> ESMDAResult:
     """Run ES-MDA.
 
@@ -87,6 +88,9 @@ def esmda(
     alphas : explicit weight schedule; must satisfy ``sum(1/alpha_i) = 1``.
     localize : apply adaptive correlation localization at each step.
     seed : base perturbation seed; step ``i`` uses ``seed + i``.
+    on_step : optional callback ``(i, Theta_i, D_i, misfit_i)`` fired after the
+        forward eval of step ``i`` (the pre-update state) — used by the
+        orchestrator to checkpoint each iteration for crash recovery.
     """
     Theta0 = np.asarray(Theta0, dtype=float)
     d_obs = np.asarray(d_obs, dtype=float)
@@ -105,6 +109,8 @@ def esmda(
     for i, a in enumerate(alphas):
         D = forward(Theta)
         misfit_history.append(data_misfit(D, d_obs, C_dd))
+        if on_step is not None:
+            on_step(i, Theta, D, misfit_history[-1])
 
         loc_mask = None
         if localize:
