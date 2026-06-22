@@ -282,6 +282,47 @@ def build_axis1(r2_uplift_path: Path) -> list[dict]:
     return rows
 
 
+def build_axis2_conformance(conformance_path: Path) -> list[dict]:
+    """Axis 2 — concept conformance per cluster (θ-side; same in both experiments).
+
+    Both experiments share the same θ ensemble (TZ §0), so the rows are not
+    a true Exp1/Exp2 comparison — they are a description of how well the
+    adapted θ vectors honour the Notion §5 cluster boxes. Direction "~"
+    (informational) reflects that. The cluster-2 row is the headline:
+    the adapted cluster-2 models migrated out of their design box, which
+    is the empirical confirmation of TZ §5.4 "cluster-2 migration".
+    """
+    if not conformance_path.exists():
+        return []
+    df = pd.read_csv(conformance_path)
+    if df.empty:
+        return []
+    rows: list[dict] = []
+    for cl in sorted(df["cluster"].unique()):
+        row = df[(df["cluster"] == cl) & (df["parameter"] == "all_three")]
+        if row.empty:
+            continue
+        r = row.iloc[0]
+        rows.append({
+            "axis": 2,
+            "metric": "concept_conformance_all_three",
+            "scope": f"cluster_{int(cl)}",
+            "value_old": float(r["frac_in_box"]),
+            "value_new": float(r["frac_in_box"]),
+            "direction": "~",
+            "status": "NEUTRAL",
+            "delta": 0.0,
+            "ratio": 1.0,
+            "evidence": str(conformance_path),
+            "notes": (
+                f"{int(r['n_in_box'])}/{int(r['n_models'])} models in cluster "
+                f"{int(cl)} hit all three parameter boxes. Same value for "
+                "Exp1/Exp2 (shared θ ensemble per TZ §0)."
+            ),
+        })
+    return rows
+
+
 def build_axis1_correlations(corr_path: Path) -> list[dict]:
     """Axis 1 secondary — flag descriptor↔production correlations that clear 3/√N."""
     if not corr_path.exists():
@@ -317,6 +358,7 @@ def build_summary_comparison(root: Path) -> pd.DataFrame:
     rows.extend(build_axis1(out_root / "r2_uplift.csv"))
     rows.extend(build_axis1_correlations(out_root / "corr_descriptor_production.csv"))
     rows.extend(build_axis2(out_root / "connectivity_summary.csv"))
+    rows.extend(build_axis2_conformance(out_root / "concept_conformance.csv"))
     rows.extend(build_axis3(out_root / "diversity_width_ratio.csv"))
     rows.extend(build_axis4(out_root / "history_compliance_summary.csv"))
     rows.extend(build_axis4_misfit(out_root / "history_model_misfit.csv"))

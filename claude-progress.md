@@ -815,3 +815,28 @@ Newly surfaced by the audit:
   - `pytest tests/test_geology_production_link.py tests/test_geology_comparison.py -q` → 20/20 pass.
   - Full `pytest -q` → 287 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
 - **TZ_geology_validation.md status**: 7 / 8 features passing. Only `geolval-004` (axis-2 facies-conformance per cluster) remains — can be closed in one session using the realised-cube geometry from `connectivity_summary.csv` (top1_anisotropy, top1_orientation_deg) compared against the Notion §5 cluster boxes.
+
+### Session 026 (cont. 6) - geolval-004: realism + concept-conformance (2026-06-21)
+
+- Picked up `geolval-004-realism-metrics` after geolval-003 closed. Took to passing.
+- Implementation: `src/cmp_ensemble/geology/realism.py`
+  - `_load_theta_per_cluster` reads MODEL + SEED + THICK + MAJ_R + AZIMUTH from all three sheets of `models_near_adapted_centroids.xlsx` (header=3, established in geolval-006).
+  - `compute_concept_conformance` per (cluster, parameter): n_models, n_in_box, frac_in_box, observed median/min/max; plus an `all_three` row per cluster.
+  - `compute_facies_proportions` per (experiment, seed): mean frac_channel + mean_ntg across the 23 wells.
+  - `compute_realism_metrics` per (experiment, cluster): median + IQR of geometry-side proxies from connectivity_summary.
+  - `build_realism` driver.
+- Tests: `tests/test_geology_realism.py` — 6/6 pass. Most-important test (`test_concept_conformance_cluster_migration`) reproduces the empirical pattern: cluster-2-labelled models with cluster-1-flavoured θ values fail their own box but match cluster 1's.
+- Artefacts:
+  - `concept_conformance.csv` — 12 rows.
+  - `facies_proportions.csv` — 299 rows (149 Exp1 + 150 Exp2).
+  - `realism_metrics.csv` — 6 rows.
+- **Headline empirical finding (axis 2, the cluster-2 migration confirmation):**
+  - Cluster 0 all_three pass rate: **44%** (THICK 58%, MAJ_R 72%, AZIMUTH 100%).
+  - Cluster 1 all_three pass rate: **36%** (THICK 62%, MAJ_R 58%, AZIMUTH 100%).
+  - **Cluster 2 all_three pass rate: 2%** (1/50). THICK median = 12.6 (below box 13.9-18.2), MAJ_R median = 3341 (above box 2198-2724). Both fall squarely in cluster 1's box.
+  - **Interpretation:** post-adapted cluster-2 models systematically left their design region and migrated into cluster 1's geological zone. Empirical confirmation of TZ §5.4 hypothesis. Explains the geolval-006 result that cluster 2 receives the largest ES improvement (mismatch -56%, 8.6.4 +62 pp): cluster 2 was the most miscalibrated cluster going in, so the post-hoc ES update has the most work to do there.
+- Geometry-side observation: top1_anisotropy ≡ 5.675 in all 6 (experiment, cluster) groups because the largest body almost always spans the whole 227x59x40 grid (anisotropy = 227/40 = 5.675). Geometry-side variability is encoded entirely in the **tails** (worst-case frac_largest_26 = 0.07 in Exp1 vs 0.92 in Exp2), already reported in geolval-002. realism_metrics.csv records the medians + IQRs for completeness.
+- Updated `summary_comparison.csv`: 38 rows, **13 BETTER / 2 SIGNIFICANT / 22 NEUTRAL / 1 WORSE / 0 PENDING**.
+- Files touched: new `src/cmp_ensemble/geology/realism.py`, `tests/test_geology_realism.py`; modified `src/cmp_ensemble/geology/comparison.py` (+build_axis2_conformance); generated 3 CSVs + 3 sidecars + refreshed summary_comparison sidecar; modified `feature_list.json` (geolval-004 → passing), claude-progress.md.
+- Verification: `pytest tests/test_geology_realism.py -q` → 6/6 in 0.40s. Full `pytest -q` → 293 passed + 1 skipped (4 pre-existing setup3 failures, unrelated).
+- **TZ_geology_validation.md fully delivered: 8/8 geolval-* features passing.**

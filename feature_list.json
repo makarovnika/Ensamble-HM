@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 - geolval-003 closed: R2-uplift + SRC2 + correlations on per-well responses)",
+  "last_updated": "2026-06-21 (session 026 — geolval-004 closed; ALL 8 geolval features PASSING)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1074,13 +1074,20 @@
       "area": "geology",
       "title": "Axis 2: facies proportions, concept conformance, artefact rates",
       "user_visible_behavior": "realism_metrics.csv, facies_proportions.csv, concept_conformance.csv per cluster boxes from Notion §5.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Synthetic mismatched cube: concept_conformance.csv reports 0% match.",
         "On real data: numbers reported per experiment AND per cluster."
       ],
-      "evidence": [],
-      "notes": "Blocked on §11 Q1. Depends on geolval-002."
+      "evidence": [
+        "src/cmp_ensemble/geology/realism.py - _load_theta_per_cluster, compute_concept_conformance (vs Notion §5 boxes), compute_facies_proportions, compute_realism_metrics, build_realism",
+        "tests/test_geology_realism.py - 6 tests, all pass (incl. cluster-migration test that fixes the empirical pattern)",
+        "outputs/geology_validation/concept_conformance.csv - 12 rows (3 clusters x 4 params incl. all_three)",
+        "outputs/geology_validation/facies_proportions.csv - 299 rows (per-experiment, per-model)",
+        "outputs/geology_validation/realism_metrics.csv - 6 rows (per-experiment, per-cluster geometry-side)",
+        "summary_comparison.csv refreshed: 38 rows incl. axis-2 conformance per cluster"
+      ],
+      "notes": "Blocked on §11 Q1. Depends on geolval-002. | Closed session 026. **Critical empirical finding**: cluster 2 concept-conformance frac_all_three = 2% (1/50 models). Median observed THICK = 12.6 (below box 13.9-18.2), median MAJ_R = 3341 (above box 2198-2724) -- both fall in CLUSTER 1's design boxes. This is the empirical confirmation of TZ §5.4 'cluster-2 migration': the post-adapted cluster-2 models systematically left their design region toward cluster 1. Explains why cluster 2 receives the largest ES improvement (mismatch -56%, 8.6.4 +62pp): it was the most miscalibrated geological cluster going in."
     },
     {
       "id": "geolval-005-diversity",
