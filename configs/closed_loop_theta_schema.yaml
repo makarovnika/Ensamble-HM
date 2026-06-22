@@ -1,0 +1,60 @@
+# Closed-loop θ schema (TZ_closed_loop_ESMDA.md §4).
+#
+# Full θ-vector for the ES-MDA closed loop:
+#   Group A — geology (9): envelope-uniform prior (ranges from theta_schema.yaml).
+#   Group B — relperm by saturation region (FULL set per session-027 decision):
+#             truncated-normal around BASE_VARIABLES (tnav_autorun.py) with
+#             σ = rel_sigma·|base|, clipped by physics.
+#   Group C — contacts/multipliers: WOC_DEPTH_S_1 (depth), PERMX (multiplier,
+#             log-normal), F1..F9 (fractions).
+#
+# Base values are imported from tnav_autorun.BASE_VARIABLES — NOT duplicated here,
+# so this schema only declares which keys vary and under what physical constraint.
+#
+# WARNING (session 027): full relperm set => n_z ≈ 156 at N=150. High collapse
+# risk; the loop relies on adaptive correlation localization (3/√N) to control it.
+
+rel_sigma: 0.15          # σ = rel_sigma · |base| for truncated-normal groups (B/C)
+
+# ── Group A: geology — envelope-uniform prior ────────────────────────────────
+geology:
+  prior: uniform           # sample U(lo, hi) within the design envelope
+  parameters:
+    - {name: THICK,           range: [4.07, 19.98]}
+    - {name: MAJ_R,           range: [2113.0, 4968.5]}
+    - {name: AZIMUTH,         range: [65.25, 93.13]}
+    - {name: NUMBER_CHANNELS, range: [6.35, 13.41]}
+    - {name: CHANNELS_WIDTH,  range: [11.74, 21.92]}
+    - {name: LEN,             range: [2166.9, 2824.6]}
+    - {name: AMPLITUDE,       range: [683.1, 2573.3]}
+    - {name: RELATIVE,        range: [0.22, 0.77]}
+    - {name: PROP,            range: [0.635, 0.773]}
+
+# ── Group B: relperm — truncated-normal around base, physics-clipped ─────────
+# Each group expands over the well/region suffixes present in BASE_VARIABLES.
+relperm:
+  prior: truncated_normal
+  groups:
+    - {prefix: S_WL,   constraint: fraction}   # connate water saturation ∈ [0,1]
+    - {prefix: S_WCR,  constraint: fraction}   # critical water saturation ∈ [0,1]
+    - {prefix: S_OWCR, constraint: fraction}   # critical oil-in-water sat ∈ [0,1]
+    - {prefix: K_RORW, constraint: fraction}   # kr_o at Swc ∈ [0,1]
+    - {prefix: K_RWR,  constraint: fraction}   # kr_w at Sor ∈ [0,1]
+    - {prefix: N_OW,   constraint: corey}      # Corey oil exponent ∈ [1, 8]
+    - {prefix: N_W,    constraint: corey}      # Corey water exponent ∈ [1, 8]
+    - {prefix: KH,     constraint: fraction}   # KH multiplier (meaning TBD) ∈ [0,1]
+
+# ── Group C: contacts / multipliers ──────────────────────────────────────────
+contacts:
+  prior: truncated_normal
+  parameters:
+    - {name: WOC_DEPTH_S_1, constraint: positive}    # water-oil contact depth (m)
+    - {name: PERMX,         constraint: lognormal}   # global perm multiplier
+    - {prefix: F,           constraint: fraction}     # F1..F9 ∈ [0,1]
+
+# Physics-clip bounds for each constraint class.
+constraints:
+  fraction:  {lo: 0.0,  hi: 1.0}
+  corey:     {lo: 1.0,  hi: 8.0}
+  positive:  {lo: 0.0,  hi: .inf}
+  lognormal: {sigma_log: 0.15}     # multiplicative σ in log-space

@@ -1,0 +1,56 @@
+# Closed-loop ES-MDA runtime config (TZ_closed_loop_ESMDA.md §6, §10).
+# Decisions locked in session 027 (see memory/closed-loop-esmda-decisions.md).
+
+experiment:
+  name: closed_loop_esmda
+  seed: 42                       # base ES perturbation seed (CLAUDE.md default)
+
+ensemble:
+  N: 150                         # ensemble size (session-027 decision)
+  theta_schema: configs/closed_loop_theta_schema.yaml
+
+esmda:
+  n_alpha: 4                     # number of MDA steps (session-027 decision)
+  weights: uniform               # uniform | geometric ; Σ 1/α_i = 1
+  localize: true                 # adaptive correlation localization (§7)
+  localization_factor: 3.0       # threshold 3/√N
+  localization_method: hard      # hard | soft_taper
+  subspace_energy: 0.99          # SVD truncation energy (CLAUDE.md default)
+
+observations:
+  d_obs_type: cumulative         # annual cumulative oil/water/gas (§5)
+  noise_spec: configs/noise_spec.yaml
+  anchors:                       # year-end anchors 2011..2018 (§5)
+    - 2011-12-31
+    - 2012-12-31
+    - 2013-12-31
+    - 2014-12-31
+    - 2015-12-31
+    - 2016-12-31
+    - 2017-12-31
+    - 2018-12-31
+
+forecast:
+  enabled: true                  # post-2018 forecast for posterior ensemble (§9)
+  end: 2024-10-01
+
+tnav:
+  # Local tNavigator project (§3). Path is configurable; this is the in-repo default.
+  project: "simulation models results/tNavigator project/все центроиды.snp"
+  exe: null                      # set to tNavigator-con.exe path on the run machine
+  results_dir: "RESULTS"         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
+  # Cluster → workflow map (from tnav_autorun.CLUSTER_CONFIG).
+  cluster_workflows:
+    0: clust_0_4
+    1: clust1_1
+    2: clust_2_1
+
+run_policy:
+  # Default: write run plan + θ-matrix, then STOP (CLAUDE.md no-auto-launch).
+  # --execute (session-027: user consented) calls run_ensemble directly.
+  execute_default: false
+  max_retries: 1
+  parallel_members: false        # license-dependent (§12 Q5); serial by default
+
+checkpoint:
+  dir: "outputs/closed_loop"     # iter_i/{Theta,D,misfit,meta} per step

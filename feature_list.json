@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-21 (session 026 — geolval-004 closed; ALL 8 geolval features PASSING)",
+  "last_updated": "2026-06-22 (session 027 — CL-A + CL-B passing; closed-loop ES-MDA scaffold + core)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1152,6 +1152,124 @@
         "fig01 + fig02 deferred (PENDING_USER_INPUT, TZ §11 Q1 facies dict)"
       ],
       "notes": "Depends on geolval-003..-006. | Closed session 026. TZ §6 deliverable: 5/7 figures rendered (fig01+fig02 await Q1). Single WORSE row (cluster 0 8.6.4 52->34%) is a real local regression, transparently reported - overwhelmed by cluster 2 30->92% and cluster 1 27->47%."
+    },
+    {
+      "id": "CL-A-scaffold",
+      "priority": 50,
+      "area": "closed_loop",
+      "title": "CL-A: scaffold + prior + θ-схема (гео+full relperm+контакты) + синтетическая фикстура",
+      "user_visible_behavior": "Пользователь видит configs/closed_loop*.yaml, src/cmp_ensemble/closed_loop/prior.py, и синтетическую фикстуру для ES-MDA тестов.",
+      "status": "passing",
+      "verification": [
+        "prior возвращает Θ⁰ формы (N, n_z); все значения в физических границах (доли∈[0,1], Кор–>1, PERMX>0)",
+        "configs/closed_loop_theta_schema.yaml парсится; rel_sigma=0.15; full relperm set (group B) per session-027 decision",
+        "configs/closed_loop.yaml: n_alpha=4, N=150, execute-mode, пути к проекту/RESULTS",
+        "юнит-тест tests/test_prior.py: формы, границы, детерминизм по seed"
+      ],
+      "evidence": [
+        "tests/test_prior.py — 5 passed (session 027)",
+        "configs/closed_loop_theta_schema.yaml + configs/closed_loop.yaml",
+        "src/cmp_ensemble/closed_loop/prior.py — sample_prior → Θ⁰ (150, 148)",
+        "n_z=148: geology 9 + 8 relperm groups ×16 + contacts 11 (full relperm set)"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. n_z=148 at N=150 — collapse-risk regime accepted by user; localization is the mitigation. Geology=envelope-uniform, relperm/contacts=truncated-normal(rel_sigma=0.15) physics-clipped, PERMX log-normal."
+    },
+    {
+      "id": "CL-B-esmda-core",
+      "priority": 51,
+      "area": "closed_loop",
+      "title": "CL-B: ядро ES-MDA + LinearGaussianForward (приоритет ТЗ)",
+      "user_visible_behavior": "esmda(Θ0, forward, d_obs, C_dd, n_alpha, ...) → ESMDAResult; ES-MDA(n_α=1) ≡ один es_update.",
+      "status": "passing",
+      "verification": [
+        "ES-MDA(n_α=1) байт-в-байт совпадает с es_update",
+        "линейно-гауссова задача с большим N: постериорное среднее ≈ аналитический Калман (tol 2%)",
+        "misfit не растёт по шагам",
+        "tests/test_esmda.py — 7 тестов проходят"
+      ],
+      "evidence": [
+        "tests/test_esmda.py — 7 passed (session 027)",
+        "src/cmp_ensemble/closed_loop/{esmda.py,forward.py}",
+        "ES-MDA(n_α=1) ≡ es_update (assert_allclose rtol 1e-12); Kalman-mean recovery tol 2%; misfit decreases"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Ядро написано в предыдущей сессии (untracked), 7 тестов зелёные; формализуется. | Formalised + committed session 027 (was untracked)."
+    },
+    {
+      "id": "CL-C-results-reader",
+      "priority": 52,
+      "area": "closed_loop",
+      "title": "CL-C: results_reader.py — чтение Eclipse summary через resdata",
+      "user_visible_behavior": "read_cumulative_dsim(results_dir, wells, anchors) → вектор d из WOPT/WWPT/WGPT на годовых якорях.",
+      "status": "not_started",
+      "verification": [
+        "читает WOPT/WWPT/WGPT с реального RESULTS/<model>",
+        "форма d совпадает с d_obs-индексом (metric, well, time)",
+        "годовые якоря 2011-12-31…2018-12-31 корректны",
+        "tests/test_results_reader.py проходит (mock summary, если resdata недоступен)"
+      ],
+      "evidence": [],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+    },
+    {
+      "id": "CL-D-tnav-interface",
+      "priority": 53,
+      "area": "closed_loop",
+      "title": "CL-D: tnav_autorun ↔ results_reader; dry-run/mock без tNavigator",
+      "user_visible_behavior": "collect_results через resdata; mock-forward проходит полный цикл без симулятора.",
+      "status": "not_started",
+      "verification": [
+        "run_member/run_ensemble интегрированы с results_reader",
+        "mock-forward проходит полный ES-MDA цикл",
+        "импорт без tNavigator не падает (локальный импорт API)"
+      ],
+      "evidence": [],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+    },
+    {
+      "id": "CL-E-orchestrator",
+      "priority": 54,
+      "area": "closed_loop",
+      "title": "CL-E: orchestrator + CLI (run_closed_loop, чекпоинты, --execute/план)",
+      "user_visible_behavior": "cmp-ensemble closed-loop --cluster K [--n-alpha 4] [--N 150] [--dry-run] [--execute]; чекпоинт каждой итерации.",
+      "status": "not_started",
+      "verification": [
+        "run_closed_loop: prior→iterate→posterior→forecast→artifacts",
+        "чекпоинт outputs/closed_loop/iter_i/ (Θ_i, D_i, misfit, meta)",
+        "--execute вызывает run_ensemble; без него — план + STOP",
+        "интеграционный тест на синтетике < 30 c"
+      ],
+      "evidence": [],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+    },
+    {
+      "id": "CL-F-forecast-metrics",
+      "priority": 55,
+      "area": "closed_loop",
+      "title": "CL-F: прогноз post-2018 + метрики + фигуры + сравнение с пост-хок",
+      "user_visible_behavior": "Квантили P10/P50/P90, width_ratio, median_shift; совмещённые коридоры pure-ensemble vs post-hoc.",
+      "status": "not_started",
+      "verification": [
+        "прогноз для Θ_post на 2019-2024",
+        "метрики и эволюция misfit по шагам",
+        "сравнение коридоров и таблица метрик"
+      ],
+      "evidence": [],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+    },
+    {
+      "id": "CL-G-report-docs",
+      "priority": 56,
+      "area": "closed_loop",
+      "title": "CL-G: HTML-роллап + раздел методологии closed-loop",
+      "user_visible_behavior": "outputs/closed_loop/report.html + docs обновление для ES-MDA эксперимента.",
+      "status": "not_started",
+      "verification": [
+        "HTML-роллап closed-loop",
+        "docs/methodology.md дополнен ES-MDA",
+        "evidence-пути зафиксированы"
+      ],
+      "evidence": [],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
     }
   ]
 }

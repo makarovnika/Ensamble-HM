@@ -869,3 +869,21 @@ Newly surfaced by the audit:
 - `render_all_geology_figures` now renders 10 figures (5 originals + 4 *_audit_fixed + fig08).
 - New CSV/JSON artefacts written: diversity_{connectivity_spread,width_ratio}_audit_fixed.csv, history_vs_realism_audit_fixed.csv, history_cross_axis_correlations_audit_fixed.json + sidecars.
 - All figures (PNG 300 dpi + PDF vector) under `outputs/geology_validation/figures/`.
+
+### Session 027
+
+- Date: 2026-06-22
+- Goal: start the **new experiment** per `TZ_closed_loop_ESMDA.md` — closed-loop pure-ensemble History Matching via ES-MDA through tNavigator API. New module `src/cmp_ensemble/closed_loop/`; does not touch the post-hoc pipeline.
+- User decisions (recorded in `memory/closed-loop-esmda-decisions.md`):
+  - θ composition = **full relperm set** (group B, all saturation regions) + geology (9) + contacts (WOC, PERMX, F1..F9). User accepted collapse risk at N≈150; localization is the mitigation.
+  - n_α=4 (uniform), N=150.
+  - tNavigator launch = **auto-mode via `--execute`** (explicit user consent; overrides CLAUDE.md no-auto-launch for that flag only).
+- Found: a prior same-day session had written CL-B core (`esmda.py`, `forward.py`, `tests/test_esmda.py`) but left it **untracked and unregistered** (tracker drift). 7 tests were green.
+- Completed:
+  - Registered CL-A..CL-G in `feature_list.json` (priorities 50–56).
+  - **CL-A scaffold → passing**: `configs/closed_loop_theta_schema.yaml` (group A geology envelope-uniform; group B full relperm truncated-normal rel_sigma=0.15 physics-clipped; group C contacts + PERMX log-normal), `configs/closed_loop.yaml` (n_α=4, N=150, execute-mode, paths, year-end anchors), `src/cmp_ensemble/closed_loop/prior.py` (`sample_prior` → PriorResult). n_z=**148** (geology 9 + 8 relperm groups ×16 + contacts 11). `tests/test_prior.py` — 5 tests.
+  - **CL-B esmda core → passing** (formalised the untracked work): exported `sample_prior` from package `__init__`; `tests/test_esmda.py` — 7 tests.
+- Verification run: `pytest tests/test_prior.py tests/test_esmda.py -q` → **12 passed in 0.73 s**. Full suite: 313 passed, 4 failed — **all 4 failures pre-existing** (working-tree drift from before session 027: uncommitted `M configs/experiment_setups.yaml` drives the 3 `test_setups` failures, `M docs/figure_captions.md` drives the 1 `test_figure_captions` failure). Verified by stashing experiment_setups.yaml → test_setups goes green; both belong to the post-hoc experiment, out of closed-loop scope. Zero new failures introduced.
+- Environment note: `tooling-001` null-padding bug is real on this filesystem — all session-027 files authored via `cat > … << EOF` heredoc + null-byte assert, NOT the Write tool.
+- Known risk / open: n_z=148 at N=150 is the collapse regime; CL-E orchestrator must keep localization on. Pre-existing post-hoc working-tree drift (experiment_setups.yaml, figure_captions.md) left untouched — belongs to the other experiment; flag to user.
+- Next best step: **CL-C** (priority 52) — `results_reader.py`: read WOPT/WWPT/WGPT from real `RESULTS/<model>` Eclipse summary via `resdata`, on year-end anchors, shape-matched to the d_obs index. `resdata` must be added to `pyproject.toml` (ТЗ §8).
