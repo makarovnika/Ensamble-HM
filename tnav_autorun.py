@@ -204,17 +204,36 @@ def run_ensemble(
     return status
 
 
-def collect_results(project, model_ids: Iterable[int]):
-    """Сбор динамики (накопл. добыча по скважинам) обратно в Python.
+def collect_results(
+    results_dir,
+    model_ids: Iterable[int],
+    cum_index,
+    *,
+    run_name: str | None = None,
+    missing: str = "raise",
+) -> dict:
+    """Сбор накопл. добычи (d_sim) обратно в Python через results_reader.
 
-    ВНИМАНИЕ: точный вызов экспорта зависит от вашей сборки tNavigator API.
-    В прогнозном прогоне результаты сводились в decoded_results.xlsx — закрытие
-    цикла ES-MDA должно вернуть d_sim в том же формате. Реализуется после того,
-    как вы подтвердите способ экспорта (см. TZ_pure_ensemble_HM.md §9.4).
+    Для каждой модели ищет RESULTS/<run>/result.SMSPEC под
+    ``results_dir/<model_id>`` и читает накопл. нефть/воду/газ на якорях,
+    заданных ``cum_index`` (тот же индекс, что пинит d_obs). Возвращает
+    ``{model_id: np.ndarray(n_d,)}``. Чтение делает resdata (см. CL-C);
+    импорт локальный, чтобы tnav_autorun оставался импортируемым без него.
     """
-    raise NotImplementedError(
-        "Шаг экспорта результатов согласуется отдельно — см. ТЗ §9.4."
+    from pathlib import Path
+
+    from cmp_ensemble.closed_loop.results_reader import (
+        find_smspec,
+        read_cumulative_dsim,
     )
+
+    out: dict = {}
+    for mid in model_ids:
+        model_dir = Path(results_dir) / str(mid)
+        smspec = find_smspec(model_dir, run_name=run_name)
+        out[mid] = read_cumulative_dsim(smspec, cum_index, missing=missing)
+        log.info("collect_results: MODEL=%s d_sim shape=%s", mid, out[mid].shape)
+    return out
 
 
 # ─── CLI (тонкая обёртка, без диалогов) ──────────────────────────────────────

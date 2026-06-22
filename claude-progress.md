@@ -898,3 +898,11 @@ Newly surfaced by the audit:
 - Real summary facts: 1947 vectors, WOPT/WWPT/WGPT × 23 wells (incl. dummy B + 6 INJ), 97 dates 2011-01-01 → 2018-12-13 (history-only centroid run).
 - Verification: `pytest tests/test_results_reader.py -v` → **6 passed** (incl. real-data); closed-loop suite (prior+esmda+reader) → **18 passed**.
 - Next best step: **CL-D** (priority 53) — wire `tnav_autorun` ↔ `results_reader`: implement `collect_results`, and a `TNavForward` / mock-forward that runs a full ES-MDA cycle without a live tNavigator (dry-run/mock path).
+
+### Session 027 — CL-D (tnav interface ↔ reader)
+
+- **CL-D tnav-interface → passing**: `TNavForward` (in `forward.py`) + `tnav_autorun.collect_results` (implemented, was NotImplementedError).
+- `TNavForward(theta_names, run_fn, read_fn)` maps Θ (N,n_z) → D (N,n_d): converts each θ-row to a dict via `theta_names` (PriorResult column→key, = BASE_VARIABLES keys), submits via `run_fn` (wraps run_ensemble), reads each member's d_sim via `read_fn` (wraps read_cumulative_dsim). Simulator + reader are injected → the full ES-MDA cycle is testable with a mock; the loop submits the ensemble n_alpha+1 times (verified) and the mock result is byte-identical to the analytic `LinearGaussianForward` (rtol 1e-10).
+- `collect_results(results_dir, model_ids, cum_index, ...)` globs `RESULTS/<model>/result.SMSPEC` per model and delegates to `read_cumulative_dsim`. cmp_ensemble + tNavigator imports stay local so `tnav_autorun` imports cleanly without either.
+- Verification: `pytest tests/test_tnav_forward.py -v` → **3 passed**; `import tnav_autorun` OK without tNavigator.
+- Next best step: **CL-E** (priority 54) — `orchestrator.py` `run_closed_loop(config)`: prior → ES-MDA iterate (checkpoint `outputs/closed_loop/iter_i/`) → posterior → forecast; `cmp-ensemble closed-loop` CLI with `--execute`/plan policy; synthetic integration test < 30 s. This is where the real tNavigator wiring + the user-approved `--execute` auto-launch live.

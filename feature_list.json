@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-C passing; Eclipse-summary cumulative reader)",
+  "last_updated": "2026-06-22 (session 027 — CL-D passing; tnav interface ↔ reader, mock full cycle)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1221,14 +1221,19 @@
       "area": "closed_loop",
       "title": "CL-D: tnav_autorun ↔ results_reader; dry-run/mock без tNavigator",
       "user_visible_behavior": "collect_results через resdata; mock-forward проходит полный цикл без симулятора.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "run_member/run_ensemble интегрированы с results_reader",
         "mock-forward проходит полный ES-MDA цикл",
         "импорт без tNavigator не падает (локальный импорт API)"
       ],
-      "evidence": [],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+      "evidence": [
+        "tests/test_tnav_forward.py — 3 passed (session 027)",
+        "src/cmp_ensemble/closed_loop/forward.py::TNavForward",
+        "tnav_autorun.collect_results implemented via results_reader",
+        "full ES-MDA cycle through mock TNavForward ≡ analytic LinearGaussianForward (rtol 1e-10)"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. TNavForward injects run_fn/read_fn so the full loop is testable without a live tNavigator; θ-rows → dicts via PriorResult.names (BASE_VARIABLES keys). collect_results globs RESULTS/<model>/result.SMSPEC and delegates to read_cumulative_dsim. tnav_autorun stays import-safe (tNavigator + cmp_ensemble imports are local)."
     },
     {
       "id": "CL-E-orchestrator",
