@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-E passing; orchestrator + closed-loop CLI + checkpoints)",
+  "last_updated": "2026-06-22 (session 027 part 2 — CL-E --execute production wiring complete)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1253,9 +1253,12 @@
         "src/cmp_ensemble/closed_loop/orchestrator.py",
         "cmp-ensemble closed-loop CLI (--cluster/--n-alpha/--N/--dry-run/--execute)",
         "real CLI dry-run wrote outputs/.../iter_0/run_plan.csv + theta.npy (12,148)",
-        "full closed-loop suite 25 passed; integration in-process < 3 s"
+        "full closed-loop suite 25 passed; integration in-process < 3 s",
+        "production --execute wired: src/cmp_ensemble/closed_loop/production.py",
+        "tests/test_production.py — 9 passed (incl. full execute loop w/ mocked tNav + real d_obs=(384,))",
+        "closed-loop suite 34 passed"
       ],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. esmda gained an on_step callback so the orchestrator checkpoints each iter (iter_i/{Theta,D,meta}) for crash recovery. Plan-only path (no --execute) writes run_plan.csv + theta-matrix and STOPS per CLAUDE.md; --execute production path raises NotImplementedError until a live TNavForward is wired on the run machine (needs open_session + real d_obs). Tests inject LinearGaussianForward → full loop runs in-process."
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. esmda gained an on_step callback so the orchestrator checkpoints each iter (iter_i/{Theta,D,meta}) for crash recovery. Plan-only path (no --execute) writes run_plan.csv + theta-matrix and STOPS per CLAUDE.md; --execute production path raises NotImplementedError until a live TNavForward is wired on the run machine (needs open_session + real d_obs). Tests inject LinearGaussianForward → full loop runs in-process. | session 027 part 2: --execute now IMPLEMENTED (was NotImplementedError). production.py: model_id=base+i (decision), ResultsResolver globs Models/**/<id>/RESULTS/**/result.SMSPEC (decision), d_obs/C_dd via observations.py on the same cum_index as the reader. Fixed 2 latent bugs in shared io/observations.py exposed by the cumulative-only (rate_index=[]) path: bhp_mask dtype=bool + size-guard on C_dd condition logging (io_smoke still green). open_production_session raises if tnav.exe unset — the only value the user must supply (+ project path)."
     },
     {
       "id": "CL-F-forecast-metrics",

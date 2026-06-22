@@ -176,7 +176,8 @@ def load_observations(
     n_bhp_zero_inflated = 0
     if bhp_drop_zero:
         bhp_mask = np.array(
-            [m == "Забойное давление" for (m, _w, _t) in rate_index]
+            [m == "Забойное давление" for (m, _w, _t) in rate_index],
+            dtype=bool,
         )
         zero_bhp = bhp_mask & (np.abs(d_obs_rates) <= bhp_zero_threshold)
         n_bhp_zero_dropped = int(zero_bhp.sum())
@@ -219,8 +220,10 @@ def load_observations(
 
     sigma_cum = _build_diag_sigma(d_obs_cum, cum_index)
     C_dd_cum = np.diag(sigma_cum ** 2)
-    log.info(f"  C_dd_rates condition: {np.diag(C_dd_rates).max() / max(np.diag(C_dd_rates).min(), 1e-30):.2e}")
-    log.info(f"  C_dd_cum condition:   {np.diag(C_dd_cum).max() / max(np.diag(C_dd_cum).min(), 1e-30):.2e}")
+    if C_dd_rates.size:        # empty when rate_index is empty (cumulative-only loop)
+        log.info(f"  C_dd_rates condition: {np.diag(C_dd_rates).max() / max(np.diag(C_dd_rates).min(), 1e-30):.2e}")
+    if C_dd_cum.size:
+        log.info(f"  C_dd_cum condition:   {np.diag(C_dd_cum).max() / max(np.diag(C_dd_cum).min(), 1e-30):.2e}")
 
     return ObservationData(
         d_obs_rates=d_obs_rates,

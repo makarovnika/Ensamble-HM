@@ -916,3 +916,14 @@ Newly surfaced by the audit:
 - Full suite: 327 passed, 4 pre-existing failures (post-hoc experiment drift), 1 flake (`test_hook_script_parses_as_bash` — passes in isolation, bash-subprocess contention under parallel run; unrelated to closed-loop).
 - **State: the closed-loop ES-MDA engine (CL-A..CL-E) is complete and tested.** Running it on real models needs the user's tNavigator (wire `TNavForward` behind `--execute`). Remaining: CL-F (forecast post-2018 + metrics + figures + post-hoc comparison) and CL-G (HTML rollup + methodology docs) — both best built once a real posterior exists.
 - Next best step: pause for user — wire the production `--execute` path against a live tNavigator, OR build CL-F structurally on synthetic/forecast data.
+
+### Session 027 — CL-E part 2 (--execute production wiring)
+
+- User chose to "дожать --execute". Decisions: model_id = base+i (config `tnav.model_id_base`, default 1000), ResultsResolver globs `Models/**/<model_id>/RESULTS/**/result.SMSPEC` (any run-name), tNav exe/project paths to be supplied by user.
+- **`src/cmp_ensemble/closed_loop/production.py`**: `assign_model_ids`, `load_well_layout` (16 prod / 6 inj), `build_anchors`, `build_cum_index` (3 cum metrics × producers × 8 anchors = 384, same order fed to BOTH d_obs and the reader), `load_closed_loop_observations` (d_obs/C_dd via io.observations on rate_index=[]), `ResultsResolver`, `make_run_fn`/`make_read_fn`/`build_tnav_forward`, `open_production_session` (raises if `tnav.exe` unset).
+- **orchestrator `--execute` path now IMPLEMENTED** (was NotImplementedError): builds producers/cum_index → loads d_obs/C_dd → assigns model_ids → opens session → resolver → `build_tnav_forward` → runs the loop with per-iter checkpoints. Requires `--cluster` (selects workflow).
+- **Fixed 2 latent bugs in shared `io/observations.py`** exposed by the cumulative-only path (`rate_index=[]`): (1) `bhp_mask` needed `dtype=bool` (empty list became float → `bitwise_and` TypeError); (2) C_dd condition logging did `.max()` on a 0-size array → guarded with `if C_dd_rates.size`. `tests/test_io_smoke.py` still 2 passed → post-hoc pipeline unaffected.
+- Verified on REAL data (no tNavigator): `load_closed_loop_observations` → d_obs=(384,), C_dd=(384,384), all finite, diag spans 1e3..1e15 (per-metric soft floor handles oil-vs-gas scale).
+- Verification: `pytest tests/test_production.py` → 9 passed (incl. full execute loop with mocked tNav, real d_obs load); closed-loop suite → **34 passed**.
+- **What remains for a real run**: user supplies `tnav.exe` (+ confirms `tnav.project`) in `configs/closed_loop.yaml`, then `cmp-ensemble closed-loop --cluster K --execute`. The loop logic is fully wired and mock-verified; only the live tNavigator call is unexercised here (no API on this machine).
+- Next best step: user provides tNav paths for a real --execute smoke (1 cluster, small N), OR proceed to CL-F (forecast/metrics/figures) — best after a real posterior exists.

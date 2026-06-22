@@ -38,7 +38,8 @@ tnav:
   # Local tNavigator project (§3). Path is configurable; this is the in-repo default.
   project: "simulation models results/tNavigator project/все центроиды.snp"
   exe: null                      # set to tNavigator-con.exe path on the run machine
-  results_dir: "RESULTS"         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
+  results_dir: "RESULTS"
+  model_id_base: 1000          # member i -> model_id = base + i (fresh slots)         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
   # Cluster → workflow map (from tnav_autorun.CLUSTER_CONFIG).
   cluster_workflows:
     0: clust_0_4

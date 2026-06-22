@@ -60,10 +60,15 @@ def test_full_run_checkpoints_each_iter_and_decreases_misfit(tmp_path):
     assert len(res.misfit_history) == 5               # n_alpha + final
 
 
-def test_execute_without_forward_is_not_implemented(tmp_path):
+def test_execute_reaches_session_and_fails_clearly_without_exe(tmp_path):
+    """--execute now wires production; with a cluster but no tnav.exe it reaches
+    open_production_session and raises a clear 'tnav.exe is unset' error."""
     cfg = _cfg()
-    with pytest.raises(NotImplementedError):
-        run_closed_loop(cfg, prior=_small_prior(), execute=True, out_root=tmp_path)
+    cfg.cluster_workflows = {0: "clust_0_4"}
+    cfg.raw = {"tnav": {"exe": None, "project": "x.snp"}}
+    with pytest.raises(ValueError, match="tnav.exe is unset"):
+        run_closed_loop(cfg, prior=_small_prior(), execute=True, cluster=0,
+                        out_root=tmp_path)
 
 
 def test_cli_closed_loop_dry_run_plan(tmp_path):

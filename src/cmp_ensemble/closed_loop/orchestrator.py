@@ -136,9 +136,30 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
                                 theta_names=list(names))
 
     if forward is None and execute:
-        raise NotImplementedError(
-            "Production --execute requires a wired TNavForward (open_session + "
-            "run_ensemble + collect_results) on the run machine; pass forward=...")
+        # Wire the live tNavigator forward (production path, user-approved).
+        from cmp_ensemble.closed_loop import production as prod
+
+        if cluster is None:
+            raise ValueError("--execute requires --cluster (selects the workflow)")
+        wf = (config.cluster_workflows.get(cluster)
+              or config.cluster_workflows.get(str(cluster)))
+        if not wf:
+            raise ValueError(f"no workflow mapped for cluster {cluster}")
+        producers, injectors = prod.load_well_layout()
+        cum_index = prod.build_cum_index(producers, prod.build_anchors(config))
+        if d_obs is None or C_dd is None:
+            d_obs, C_dd = prod.load_closed_loop_observations(
+                config, cum_index, producers, injectors)
+        base = int(config.raw.get("tnav", {}).get("model_id_base", 1000))
+        model_ids = prod.assign_model_ids(config.N, base)
+        conn, project = prod.open_production_session(config)
+        snf_root = Path(config.raw.get("tnav", {}).get("project", "")).with_suffix(".snf")
+        resolver = prod.ResultsResolver(snf_root)
+        forward = prod.build_tnav_forward(
+            project, wf, model_ids, names, resolver, cum_index)
+        log.info("production forward wired: cluster=%s workflow=%s model_ids=%s..%s",
+                 cluster, wf, model_ids[0], model_ids[-1])
+
     if d_obs is None or C_dd is None:
         raise ValueError("d_obs and C_dd are required to run the loop")
 
