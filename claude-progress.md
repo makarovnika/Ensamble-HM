@@ -887,3 +887,14 @@ Newly surfaced by the audit:
 - Environment note: `tooling-001` null-padding bug is real on this filesystem — all session-027 files authored via `cat > … << EOF` heredoc + null-byte assert, NOT the Write tool.
 - Known risk / open: n_z=148 at N=150 is the collapse regime; CL-E orchestrator must keep localization on. Pre-existing post-hoc working-tree drift (experiment_setups.yaml, figure_captions.md) left untouched — belongs to the other experiment; flag to user.
 - Next best step: **CL-C** (priority 52) — `results_reader.py`: read WOPT/WWPT/WGPT from real `RESULTS/<model>` Eclipse summary via `resdata`, on year-end anchors, shape-matched to the d_obs index. `resdata` must be added to `pyproject.toml` (ТЗ §8).
+
+### Session 027 — CL-C (Eclipse-summary reader)
+
+- **CL-C results-reader → passing**: `src/cmp_ensemble/closed_loop/results_reader.py`. Reads cumulative production (WOPT/WWPT/WGPT) from a real tNavigator Eclipse summary via `resdata` (added to `pyproject.toml`, 6.3.1 installed). `assemble_dsim(summary, cum_index)` produces the flat d_sim in the *exact* (metric, well, time) order pinned by the observation `cum_index`, so d_sim ≡ d_obs index.
+- Two robustness fixes discovered against real data:
+  1. **Non-ASCII paths**: resdata's C backend cannot open the in-repo case under `все центроиды.snf` (Cyrillic). `open_summary` copies `result.SMSPEC`/`.UNSMRY` to an ASCII temp dir first, then cleans up.
+  2. **Anchor past last step**: the history run ends 2018-12-13, but the §5 anchor is 2018-12-31. `interp_cumulative` uses `np.interp` which clamps out-of-range anchors to the endpoint — correct for monotonic cumulative production.
+- `assemble_dsim` is resdata-free (duck-typed `SummaryLike` protocol) → unit-tested with a `FakeSummary` mock; the real-data test is `skipif` the in-repo summary or resdata is absent.
+- Real summary facts: 1947 vectors, WOPT/WWPT/WGPT × 23 wells (incl. dummy B + 6 INJ), 97 dates 2011-01-01 → 2018-12-13 (history-only centroid run).
+- Verification: `pytest tests/test_results_reader.py -v` → **6 passed** (incl. real-data); closed-loop suite (prior+esmda+reader) → **18 passed**.
+- Next best step: **CL-D** (priority 53) — wire `tnav_autorun` ↔ `results_reader`: implement `collect_results`, and a `TNavForward` / mock-forward that runs a full ES-MDA cycle without a live tNavigator (dry-run/mock path).

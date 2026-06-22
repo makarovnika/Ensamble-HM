@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-A + CL-B passing; closed-loop ES-MDA scaffold + core)",
+  "last_updated": "2026-06-22 (session 027 — CL-C passing; Eclipse-summary cumulative reader)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1200,15 +1200,20 @@
       "area": "closed_loop",
       "title": "CL-C: results_reader.py — чтение Eclipse summary через resdata",
       "user_visible_behavior": "read_cumulative_dsim(results_dir, wells, anchors) → вектор d из WOPT/WWPT/WGPT на годовых якорях.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "читает WOPT/WWPT/WGPT с реального RESULTS/<model>",
         "форма d совпадает с d_obs-индексом (metric, well, time)",
         "годовые якоря 2011-12-31…2018-12-31 корректны",
         "tests/test_results_reader.py проходит (mock summary, если resdata недоступен)"
       ],
-      "evidence": [],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+      "evidence": [
+        "tests/test_results_reader.py — 6 passed incl. real-data (session 027)",
+        "src/cmp_ensemble/closed_loop/results_reader.py",
+        "real RESULTS read: …/все центроиды.snf/Models/51/110/RESULTS/0_1-centroid/result.SMSPEC via resdata 6.3.1",
+        "WOPT/WWPT/WGPT × producers × 8 year-end anchors; d ordered by cum_index (matches d_obs)"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. Two robustness fixes: (1) resdata C-backend fails on Cyrillic paths → copy SMSPEC/UNSMRY to ASCII temp dir; (2) year-end anchor 2018-12-31 is past the history run's last step 2018-12-13 → np.interp clamps cumulative to the final value (monotonic). assemble_dsim is resdata-free (SummaryLike protocol) so it unit-tests with a mock."
     },
     {
       "id": "CL-D-tnav-interface",

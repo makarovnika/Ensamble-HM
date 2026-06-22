@@ -8,13 +8,19 @@ against a linear-Gaussian test model or against tNavigator in production.
 from cmp_ensemble.closed_loop.esmda import ESMDAResult, esmda, uniform_alphas
 from cmp_ensemble.closed_loop.forward import ForwardModel, LinearGaussianForward
 from cmp_ensemble.closed_loop.prior import PriorResult, sample_prior
+from cmp_ensemble.closed_loop.results_reader import (
+    assemble_dsim,
+    read_cumulative_dsim,
+)
 
 __all__ = [
     "ESMDAResult",
     "ForwardModel",
     "LinearGaussianForward",
     "PriorResult",
+    "assemble_dsim",
     "esmda",
+    "read_cumulative_dsim",
     "sample_prior",
     "uniform_alphas",
 ]
