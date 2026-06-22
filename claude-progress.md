@@ -856,3 +856,16 @@ Newly surfaced by the audit:
   3. History mismatch reduction (cluster 2 8.6.4 30 to 92%, cross-axis r near zero).
   4. The cluster-2 narrative: concept conformance + ES-update improvement converge on the same cluster.
 - pytest -q: 297 passed + 1 skipped (+4 vs pre-audit; 4 pre-existing setup3 failures unchanged).
+
+### Session 027 (cont.) - AUDIT figures (2026-06-22)
+
+- Per user request "обнови все картинки результатов" — Strategy C extended to figures.
+- `src/cmp_ensemble/viz/geology.py` extended with 5 new builders:
+  - `geol_fig04_audit_fixed` (connectivity_summary_fixed_cutoff source)
+  - `_render_fig05` helper + `geol_fig05_audit_fixed` (diversity_width_ratio_audit_fixed)
+  - `geol_fig06_audit_fixed` (history_vs_realism_audit_fixed)
+  - `geol_fig07_audit_fixed` (cluster-2 with audit-fixed realism)
+  - `geol_fig08_uplift_in_sample_vs_cv` (NEW — bar chart of in-sample vs CV uplift per producer)
+- `render_all_geology_figures` now renders 10 figures (5 originals + 4 *_audit_fixed + fig08).
+- New CSV/JSON artefacts written: diversity_{connectivity_spread,width_ratio}_audit_fixed.csv, history_vs_realism_audit_fixed.csv, history_cross_axis_correlations_audit_fixed.json + sidecars.
+- All figures (PNG 300 dpi + PDF vector) under `outputs/geology_validation/figures/`.

@@ -252,6 +252,177 @@ def geol_fig07_cluster2_migration(
 # ──────────────────────────────────────────────────────────────────────────
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# fig08 — R²-uplift: in-sample vs CV (the audit-driven addition)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def geol_fig08_uplift_in_sample_vs_cv(
+    r2_uplift_path: Path,
+    out_dir: Path,
+) -> tuple[Path, Path]:
+    """Side-by-side in-sample vs cross-validated R²-uplift per producer.
+
+    The original axis-1 claim (geology explains +5-12 pp beyond θ) was
+    invalidated by 5-fold CV; this figure makes the contrast explicit.
+    """
+    df = pd.read_csv(r2_uplift_path)
+    # keep only one row per (response, scope=all); drop the affine-twinned
+    # watercut rows since CV uplift mirrors cum_oil exactly.
+    sub = df[(df["scope"] == "all") &
+              (df["response"].str.startswith("cum_oil_"))].copy()
+    sub["well"] = sub["response"].str.replace("cum_oil_", "")
+    sub = sub.sort_values("uplift", ascending=False)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    x = np.arange(len(sub))
+    w = 0.4
+    ax.bar(x - w/2, sub["uplift"], width=w, color="#888",
+            label="in-sample uplift (published, biased)", edgecolor="black", linewidth=0.4)
+    ax.bar(x + w/2, sub["uplift_cv"], width=w, color="#d62728",
+            label="5-fold CV uplift (honest)", edgecolor="black", linewidth=0.4)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(sub["well"].tolist(), rotation=0)
+    ax.set_ylabel("R² uplift = R²(θ+geo) − R²(θ)")
+    # Use a symlog axis if any CV uplift is catastrophic (e.g. WELL9 = -17)
+    if abs(sub["uplift_cv"].min()) > 1.0:
+        ax.set_yscale("symlog", linthresh=0.1)
+    ax.set_title("Axis-1 R²-uplift per producer: in-sample inflates, CV is honest")
+    ax.legend(loc="lower left", fontsize=9)
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    return _save_pair(fig, out_dir, "geol_fig08_uplift_in_sample_vs_cv")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# audit-fixed variants of fig04, fig05, fig06, fig07
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def geol_fig04_audit_fixed(connectivity_path: Path,
+                            out_dir: Path) -> tuple[Path, Path]:
+    """Same as fig04 but uses connectivity_summary_fixed_cutoff.csv."""
+    if not connectivity_path.exists():
+        raise FileNotFoundError(connectivity_path)
+    df = pd.read_csv(connectivity_path)
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
+    metrics = [
+        ("n_bodies_26",                 "n_bodies (26-conn)",         True),
+        ("frac_sand_in_largest_26",     "frac sand in largest body",  False),
+        ("mean_inj_connections_per_producer",
+         "mean INJ connections / producer", False),
+    ]
+    for ax, (col, title, log_y) in zip(axes, metrics):
+        data_by_exp = [df[df["experiment"] == e][col].dropna().to_numpy()
+                       for e in (1, 2)]
+        ax.boxplot(data_by_exp, labels=["Exp1 (old)", "Exp2 (new)"],
+                    showfliers=True,
+                    boxprops=dict(linewidth=1.3),
+                    flierprops=dict(marker="o", markersize=3, markerfacecolor="#444",
+                                    markeredgecolor="#444", alpha=0.4))
+        if log_y:
+            ax.set_yscale("symlog")
+        ax.set_title(title)
+        ax.grid(axis="y", alpha=0.25)
+    fig.suptitle("AUDIT-fixed connectivity (cutoff=0 mD) — bug-driven Exp1 "
+                 "outliers gone; distributions now nearly identical",
+                 fontsize=11)
+    fig.tight_layout()
+    return _save_pair(fig, out_dir, "geol_fig04_geobody_connectivity_audit_fixed")
+
+
+def geol_fig05_audit_fixed(width_ratio_path: Path,
+                            out_dir: Path) -> tuple[Path, Path]:
+    return geol_fig05_diversity(width_ratio_path, out_dir)._replace(0) if False \
+        else _render_fig05(width_ratio_path, out_dir,
+                           suffix="_audit_fixed",
+                           subtitle_extra=" (AUDIT-fixed with cutoff=0)")
+
+
+def _render_fig05(width_ratio_path: Path, out_dir: Path,
+                   suffix: str = "", subtitle_extra: str = "") -> tuple[Path, Path]:
+    df = pd.read_csv(width_ratio_path).sort_values("width_ratio_geo")
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    colors = ["#d62728" if v > 1 else "#1f77b4" for v in df["width_ratio_geo"]]
+    ax.barh(df["metric"], df["width_ratio_geo"], color=colors,
+             edgecolor="black", linewidth=0.4)
+    ax.axvline(1.0, color="black", linewidth=0.8)
+    ax.set_xlabel("width_ratio = spread(Exp2) / spread(Exp1)")
+    ax.set_title("Geological width_ratio per metric" + subtitle_extra
+                 + "\nblue = Exp2 tightens variability, red = Exp2 broadens it",
+                 fontsize=10)
+    ax.grid(axis="x", alpha=0.2)
+    fig.tight_layout()
+    return _save_pair(fig, out_dir, f"geol_fig05_diversity{suffix}")
+
+
+def geol_fig06_audit_fixed(history_vs_realism_path: Path,
+                            out_dir: Path) -> tuple[Path, Path]:
+    df = pd.read_csv(history_vs_realism_path).dropna(
+        subset=["frac_sand_in_largest_26", "total_mismatch_pct"])
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
+    for ax, setup in zip(axes, ("setup1_naive", "setup2_localized")):
+        sub = df[df["setup"] == setup]
+        for cl in (0, 1, 2):
+            s = sub[sub["cluster_x"] == cl]
+            ax.scatter(s["frac_sand_in_largest_26"], s["total_mismatch_pct"],
+                       s=24, alpha=0.65, color=CLUSTER_COLORS[cl],
+                       edgecolor="black", linewidth=0.3,
+                       label=f"cluster {cl}")
+        ax.set_xlabel("frac_sand_in_largest_26 (audit-fixed)")
+        ax.set_ylabel("total mismatch (%)")
+        ax.set_title(f"{setup} — mean mismatch = "
+                     f"{sub['total_mismatch_pct'].mean():.1f}%")
+        ax.grid(alpha=0.25)
+        if setup == "setup1_naive":
+            ax.legend(loc="upper left", fontsize=8)
+    fig.suptitle("AUDIT-fixed mismatch vs realism — both Exp axes use "
+                 "cutoff=0 mD connectivity",
+                 fontsize=11)
+    fig.tight_layout()
+    return _save_pair(fig, out_dir, "geol_fig06_history_vs_realism_audit_fixed")
+
+
+def geol_fig07_audit_fixed(history_vs_realism_path: Path,
+                            out_dir: Path) -> tuple[Path, Path]:
+    df = pd.read_csv(history_vs_realism_path).dropna(
+        subset=["frac_sand_in_largest_26", "total_mismatch_pct"])
+    c2 = df[df["cluster_x"] == 2]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    ax = axes[0]
+    s1 = c2[c2["setup"] == "setup1_naive"].set_index("model_id")
+    s2 = c2[c2["setup"] == "setup2_localized"].set_index("model_id")
+    common = s1.index.intersection(s2.index)
+    if len(common):
+        x = np.zeros(len(common)); y = np.ones(len(common))
+        for mid in common:
+            ax.plot([0, 1],
+                    [s1.loc[mid, "total_mismatch_pct"],
+                     s2.loc[mid, "total_mismatch_pct"]],
+                    "-", color="#2ca02c", alpha=0.35, linewidth=0.6)
+        ax.scatter(x, [s1.loc[mid, "total_mismatch_pct"] for mid in common],
+                    s=22, color=SETUP_COLORS["setup1_naive"], label="setup1_naive")
+        ax.scatter(y, [s2.loc[mid, "total_mismatch_pct"] for mid in common],
+                    s=22, color=SETUP_COLORS["setup2_localized"],
+                    label="setup2_localized")
+    ax.set_xticks([0, 1]); ax.set_xticklabels(["setup1_naive", "setup2_localized"])
+    ax.set_ylabel("total mismatch (%)")
+    ax.set_title(f"Cluster 2 mismatch — n={len(common)} paired models")
+    ax.grid(alpha=0.25); ax.legend(loc="upper right", fontsize=8)
+    ax = axes[1]
+    ax.boxplot([s1["frac_sand_in_largest_26"].to_numpy(),
+                 s2["frac_sand_in_largest_26"].to_numpy()],
+                labels=["setup1_naive", "setup2_localized"], widths=0.5,
+                boxprops=dict(linewidth=1.3))
+    ax.set_ylabel("frac_sand_in_largest_26 (audit-fixed)")
+    ax.set_title("Cluster 2 realism — unchanged by ES update")
+    ax.grid(axis="y", alpha=0.25)
+    fig.suptitle("AUDIT-fixed cluster-2 view — mismatch halves, realism preserved",
+                 fontsize=11)
+    fig.tight_layout()
+    return _save_pair(fig, out_dir, "geol_fig07_cluster2_migration_audit_fixed")
+
+
 def render_all_geology_figures(root: Path) -> dict[str, tuple[Path, Path]]:
     """Render the five buildable figures + report on pending ones."""
     out_root = root / "outputs/geology_validation/figures"
@@ -262,6 +433,7 @@ def render_all_geology_figures(root: Path) -> dict[str, tuple[Path, Path]]:
     plan = [
         ("geol_fig03", lambda: geol_fig03_facies_geometry(
             root / "models_near_adapted_centroids.xlsx", out_root)),
+        # Originals (kept for transparent A/B in supplementary)
         ("geol_fig04", lambda: geol_fig04_geobody_connectivity(
             root / "outputs/geology_validation/connectivity_summary.csv", out_root)),
         ("geol_fig05", lambda: geol_fig05_diversity(
@@ -270,6 +442,23 @@ def render_all_geology_figures(root: Path) -> dict[str, tuple[Path, Path]]:
             root / "outputs/geology_validation/history_vs_realism.csv", out_root)),
         ("geol_fig07", lambda: geol_fig07_cluster2_migration(
             root / "outputs/geology_validation/history_vs_realism.csv", out_root)),
+        # AUDIT-fixed variants (the article's main figures)
+        ("geol_fig04_audit", lambda: geol_fig04_audit_fixed(
+            root / "outputs/geology_validation/connectivity_summary_fixed_cutoff.csv",
+            out_root)),
+        ("geol_fig05_audit", lambda: geol_fig05_audit_fixed(
+            root / "outputs/geology_validation/diversity_width_ratio_audit_fixed.csv",
+            out_root)),
+        ("geol_fig06_audit", lambda: geol_fig06_audit_fixed(
+            root / "outputs/geology_validation/history_vs_realism_audit_fixed.csv",
+            out_root)),
+        ("geol_fig07_audit", lambda: geol_fig07_audit_fixed(
+            root / "outputs/geology_validation/history_vs_realism_audit_fixed.csv",
+            out_root)),
+        # Audit-driven new figure: in-sample vs CV for axis 1
+        ("geol_fig08_uplift_cv", lambda: geol_fig08_uplift_in_sample_vs_cv(
+            root / "outputs/geology_validation/r2_uplift.csv",
+            out_root)),
     ]
     done: dict[str, tuple[Path, Path]] = {}
     for name, fn in plan:
