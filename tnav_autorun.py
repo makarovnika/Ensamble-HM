@@ -124,9 +124,9 @@ def open_session(exe_path: str, project_path: str):
     """
     import tNavigator_python_API as tnav  # noqa: WPS433 (локальный импорт намеренно)
 
-    log.info("Запуск tNavigator: %s", exe_path)
+    log.info("Launching tNavigator: %s", exe_path)
     conn = tnav.Connection(path_to_exe=exe_path)
-    log.info("Открываю проект: %s", project_path)
+    log.info("Opening project: %s", project_path)
     project = conn.open_project(project_path)
     project.run_py_code(
         code='request_license_features (requested_features=[{"feature":"FEAT_GEOLOGY_DESIGNER"}])'
@@ -186,21 +186,21 @@ def run_ensemble(
         attempt = 0
         while True:
             try:
-                log.info("[%d/%d] MODEL=%s запуск", i, total, mid)
+                log.info("[%d/%d] MODEL=%s submit", i, total, mid)
                 run_member(project, workflow, mid, theta)
                 status[mid] = "ok"
                 break
             except Exception as exc:  # noqa: BLE001 — логируем и продолжаем ансамбль
                 attempt += 1
                 if attempt > max_retries:
-                    log.error("MODEL=%s провален: %s", mid, exc)
+                    log.error("MODEL=%s failed: %s", mid, exc)
                     status[mid] = f"error: {exc}"
                     break
-                log.warning("MODEL=%s ретрай %d/%d (%s)", mid, attempt, max_retries, exc)
+                log.warning("MODEL=%s retry %d/%d (%s)", mid, attempt, max_retries, exc)
         if sleep_between:
             time.sleep(sleep_between)
     ok = sum(v == "ok" for v in status.values())
-    log.info("Готово: %d/%d успешно", ok, total)
+    log.info("Done: %d/%d ok", ok, total)
     return status
 
 
@@ -252,12 +252,12 @@ def main() -> None:
     workflow = CLUSTER_CONFIG[args.cluster]["workflow"]
     model_ids = df["MODEL"].tolist()
     thetas = [{c: float(r[c]) for c in VARYING_COLS} for _, r in df.iterrows()]
-    log.info("Кластер %d | workflow=%s | моделей: %d", args.cluster, workflow, len(model_ids))
+    log.info("Cluster %d | workflow=%s | models: %d", args.cluster, workflow, len(model_ids))
 
     if args.dry_run:
         sample = build_variables(thetas[0])
-        log.info("DRY-RUN: первый член MODEL=%s, %d переменных", model_ids[0], len(sample))
-        log.info("DRY-RUN: пример THICK=%.4f MAJ_R=%.2f", thetas[0]["THICK"], thetas[0]["MAJ_R"])
+        log.info("DRY-RUN: first member MODEL=%s, %d variables", model_ids[0], len(sample))
+        log.info("DRY-RUN: sample THICK=%.4f MAJ_R=%.2f", thetas[0]["THICK"], thetas[0]["MAJ_R"])
         return
 
     if not args.exe or not args.project:

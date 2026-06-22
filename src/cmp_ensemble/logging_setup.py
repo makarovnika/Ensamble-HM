@@ -17,6 +17,16 @@ def setup_logging(
 
     Safe to call multiple times — existing handlers are cleared first.
     """
+    # Force UTF-8 on the console so Cyrillic / arrows in log messages don't crash
+    # the RichHandler on a cp1251 Windows terminal (errors='replace' is a backstop).
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     for h in list(root.handlers):

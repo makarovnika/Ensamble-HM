@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — tNav exe path set; plan model_id = base+i)",
+  "last_updated": "2026-06-22 (session 027 — live tNav smoke: connection OK, result-mapping unresolved; logging UTF-8 fix)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
