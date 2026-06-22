@@ -937,3 +937,13 @@ Newly surfaced by the audit:
 - **Fixed along the way:** the live run exposed a RichHandler crash on Cyrillic/`→` log messages (cp1251 console). Fixed at the root: `setup_logging` reconfigures stdout/stderr to UTF-8; tnav_autorun messages transliterated to ASCII. Committed.
 - **Open question for user (blocks a correct --execute):** how does running `clust_0_4` produce a simulated model + `result.SMSPEC`, and at what path / under what model id? Does it run the flow sim or is a separate calculate step needed? How were the original 150 models simulated and where did their summaries land?
 - Next best step: resolve the workflow→results mapping with the user, then adjust `ResultsResolver` / add a post-run "calculate" step. The Python loop, checkpointing, observations, and reader are all proven; only the simulator-output retrieval needs the correct convention.
+
+### Session 027 — root-cause of the --execute result gap (probe + run.log)
+
+- Built a one-shot probe (run ONE workflow, snapshot Models/51 before/after, time it). Finding: `run_member` returned in **4.5 s** and produced **no new model / no SMSPEC** even at t+120 s.
+- `tNavigator_python_API.Project.run_py_code` is **synchronous** (returns the code's `return` value), so 4.5 s means the workflow genuinely completed that fast.
+- **tNavigator's own `run.log` is the smoking gun**: Workflow `clust_0_4` ran (3 s) executing **geology-only** steps — 3D Voronoi Regions, Arithmetics, Adjust Equil/RP Table, Faults Mapping, Assign Value by Polygon, Aquifer calc/mapping — then finished. **There is NO flow-simulation / dynamic-model run** in `clust_0_4`, so no `result.SMSPEC` is produced.
+- **Conclusion**: `clust_0_4` builds the STATIC geology model only. The hydrodynamic run that yields WOPT/WWPT/WGPT is a SEPARATE step. The demo models 110–133 carry their results under `RESULTS/0_1-centroid/` (history) and `RESULTS/0_1-прогноз/` (forecast) — separate dynamic-model calculations, not the geology workflow's output.
+- **The closed-loop Python machinery (CL-A..CL-E) is complete and correct.** The only missing piece for a live run is the tNavigator-side step that RUNS the simulation after the geology workflow — this is project-specific and needs the user's input (how were the original 150 dynamic runs triggered: a second workflow? a "calculate dynamic model" API call? a model-template that auto-simulates?).
+- Side fixes landed this session: UTF-8 console logging; ASCII tnav_autorun messages. Probe script + temp logs removed (kept tree clean).
+- Next best step: get the simulation-run mechanism from the user, add it to `production.run_fn` (build geology → run dynamic model → then read), and re-smoke. Until then, CL-F/CL-G can proceed structurally on synthetic data.
