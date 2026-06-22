@@ -36,7 +36,7 @@ forecast:
 
 tnav:
   # Local tNavigator project (§3). Path is configurable; this is the in-repo default.
-  project: "simulation models results/tNavigator project/все центроиды.snp"
+  project: "simulation models results/3 centroids with 4 model near by/все центроиды.snp"
   exe: "C:/Program Files/tNavigator/26.1/tNavigator-con-v26.1-4207-g254db398cdfc.exe"
   results_dir: "RESULTS"
   model_id_base: 1000          # member i -> model_id = base + i (fresh slots)         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
