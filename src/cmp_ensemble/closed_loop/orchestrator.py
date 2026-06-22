@@ -80,7 +80,7 @@ class ClosedLoopResult:
     n_iter: int = 0
 
 
-def write_run_plan(out_dir, iter_i, Theta, names, *, cluster=None, workflow=None):
+def write_run_plan(out_dir, iter_i, Theta, names, *, cluster=None, workflow=None, model_id_base=0):
     """Write run_plan.csv (one row per member) + the theta-matrix for one iter."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -92,7 +92,7 @@ def write_run_plan(out_dir, iter_i, Theta, names, *, cluster=None, workflow=None
     cl = "" if cluster is None else str(cluster)
     wf = workflow or ""
     for m in range(Theta.shape[0]):
-        lines.append(f"{m},{m},{cl},{wf}")
+        lines.append(f"{m},{model_id_base + m},{cl},{wf}")
     plan.write_text("\n".join(lines) + "\n", encoding="utf-8")
     write_sidecar(theta_path, extra={"iter": int(iter_i), "N": int(Theta.shape[0])})
     log.info("run plan written: %s (%d members)", plan, Theta.shape[0])
@@ -128,8 +128,9 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
     workflow = config.cluster_workflows.get(cluster) if cluster is not None else None
 
     if forward is None and not execute:
+        base = int(config.raw.get("tnav", {}).get("model_id_base", 0))
         write_run_plan(out_root / "iter_0", 0, Theta0, names,
-                       cluster=cluster, workflow=workflow)
+                       cluster=cluster, workflow=workflow, model_id_base=base)
         log.warning("Plan-only: wrote %s/iter_0/run_plan.csv and STOPPED. "
                     "Run tNavigator on the plan, or re-invoke with --execute.", out_root)
         return ClosedLoopResult(status="planned", out_dir=out_root,
