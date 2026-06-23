@@ -1002,3 +1002,13 @@ Newly surfaced by the audit:
 - **Resume command if interrupted** (reboot/license drop/session end): re-run the exact same command — archived members are reused.
 - **Watch-point**: after iter_0's ES update, check max|Δθ| / misfit drop to confirm localization (3/√150≈0.245) does NOT zero the whole gain as it did at N=2. If it does, lower localization_factor or switch to soft_taper and resume.
 - **Note**: this run produces the HISTORY-matched posterior (2011-2018). Post-2018 forecast corridors require a separate forecast-window forward (different anchors) wired after the posterior exists.
+
+### Session 027 — run rescaled to N=75 + --skip-final-eval
+
+- First N=150 background run DIED early (0 members; no python.exe found, TaskStop "no task found"). The harness background mechanism is not reliable for multi-day runs.
+- User chose N=75, n_alpha=4, --skip-final-eval. Implemented --skip-final-eval (esmda drops the final posterior forward pass: n_alpha*N instead of (n_alpha+1)*N sims; posterior misfit forgone, recoverable from a forecast run). 8 esmda tests.
+- Cost now: 4 × 75 = **300 sims ≈ 2.7 days** serial.
+- Freed the license by killing orphaned tNavigator-con API servers from the probe (kept the user's GUI). Relaunched N=75 — clean start, license acquired, first member running.
+- **Durability**: because the harness background task died once, the robust operating model is RESUME. Re-launch command (idempotent, continues from archived members):
+  `python -m cmp_ensemble.cli --log-level INFO closed-loop --cluster 0 --N 75 --n-alpha 4 --skip-final-eval --execute --out outputs/closed_loop`
+  Best run in a persistent user terminal (Start-Process / kept-open PowerShell) so it survives independent of the agent session. config N default now 75.

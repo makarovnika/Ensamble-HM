@@ -6,7 +6,7 @@ experiment:
   seed: 42                       # base ES perturbation seed (CLAUDE.md default)
 
 ensemble:
-  N: 150                         # ensemble size (session-027 decision)
+  N: 75                         # ensemble size (session-027 decision)
   theta_schema: configs/closed_loop_theta_schema.yaml
 
 esmda:
