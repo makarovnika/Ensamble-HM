@@ -967,3 +967,16 @@ Newly surfaced by the audit:
 - **CL-A..CL-G all passing — the closed-loop ES-MDA experiment is fully scaffolded, tested, and committed.**
 - **Single remaining blocker for real numbers**: the live `--execute` path runs end-to-end (session, licenses, geology build, checkpointing, forecast/figures/report all proven) EXCEPT the tNavigator dynamic-simulation step. Root-caused via run.log: `clust_0_4` builds geology only (3D Voronoi, Arithmetics, Equil/RP tables, Faults/Aquifer mapping) and does NOT run the flow sim, so `result.SMSPEC` is never produced. The fix is a small addition to `production.run_fn` (build → run dynamic model → read) once the user confirms how the simulation is triggered in their project (the demo's `0_1-centroid`/`0_1-прогноз` runs are separate dynamic calculations, not the geology workflow).
 - Session 027 summary: registered + delivered CL-A..CL-G (7 features), 40 closed-loop tests, resdata integration, live tNavigator connection proven, UTF-8 logging fix, 2 latent observations.py bugs fixed. ~10 commits.
+
+### Session 027 — overwrite-slot path (WF now simulates, single slot)
+
+- User added the simulation step to `clust_0_4`, but the WF **overwrites a single model slot** (`Models/51/134`) on every run, so results must be captured per-member before the next overwrite.
+- Added **serial run→read→archive** path:
+  - `production.TNavOverwriteForward`: for each ES-MDA step, loop members — run the WF (build + simulate, synchronous), read `Models/51/134/RESULTS/**/result.SMSPEC`, then archive before the next member.
+  - `archive_member`: snapshots `theta.json` (sampled overrides) + `wf_variables.json` (full WF variables = BASE+overrides) + `result.SMSPEC`/`.UNSMRY`/`.sum` + `model_file_list.txt` (WF include manifest) + `d_sim.npy` + `meta.yaml` under `outputs/closed_loop/iter_i/member_m/` — full reproducibility per the user's requirement.
+  - `slot_smspec`: newest `result.SMSPEC` under the overwrite slot.
+  - Selected via `tnav.overwrite_slot: true` in `configs/closed_loop.yaml` (+ `model_slot_dir`, `archive_members`). The batch `build_tnav_forward` is kept for fresh-slot projects.
+- Orchestrator `--execute` branch now chooses overwrite vs batch forward by config.
+- Verification: `tests/test_overwrite_forward.py` → 4 passed (slot read, archive snapshot, serial run/read/archive with per-iter dirs, width guard); closed-loop suite → **44 passed**.
+- **Ready for a live re-smoke** now that the WF simulates. Expected: each member writes Models/51/134, we read + archive, ES-MDA proceeds. The only runtime cost is real (flow sim per member, synchronous).
+- Next: run a small live smoke (`--cluster 0 --N 2 --n-alpha 1 --execute`) to confirm the full real loop, then scale up.

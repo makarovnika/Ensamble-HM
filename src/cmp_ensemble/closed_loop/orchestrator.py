@@ -156,11 +156,22 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
         model_ids = prod.assign_model_ids(config.N, base)
         conn, project = prod.open_production_session(config)
         snf_root = Path(config.raw.get("tnav", {}).get("project", "")).with_suffix(".snf")
-        resolver = prod.ResultsResolver(snf_root)
-        forward = prod.build_tnav_forward(
-            project, wf, model_ids, names, resolver, cum_index)
-        log.info("production forward wired: cluster=%s workflow=%s model_ids=%s..%s",
-                 cluster, wf, model_ids[0], model_ids[-1])
+        tnav_cfg = config.raw.get("tnav", {})
+        if tnav_cfg.get("overwrite_slot", False):
+            # WF overwrites a single model slot each run -> serial run/read/archive.
+            forward = prod.build_overwrite_forward(
+                project, wf, names, snf_root, cum_index,
+                slot_rel=tnav_cfg.get("model_slot_dir", "Models/51/134"),
+                archive_root=out_root,
+                archive=tnav_cfg.get("archive_members", True))
+            log.info("production OVERWRITE forward wired: cluster=%s workflow=%s slot=%s",
+                     cluster, wf, tnav_cfg.get("model_slot_dir"))
+        else:
+            resolver = prod.ResultsResolver(snf_root)
+            forward = prod.build_tnav_forward(
+                project, wf, model_ids, names, resolver, cum_index)
+            log.info("production forward wired: cluster=%s workflow=%s model_ids=%s..%s",
+                     cluster, wf, model_ids[0], model_ids[-1])
 
     if d_obs is None or C_dd is None:
         raise ValueError("d_obs and C_dd are required to run the loop")

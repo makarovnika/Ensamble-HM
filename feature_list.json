@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-G passing; ALL CL-A..CL-G complete. Live --execute pending tNavigator sim-run step)",
+  "last_updated": "2026-06-22 (session 027 — overwrite-slot serial forward + per-member archiving; ready for live re-smoke)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1256,9 +1256,11 @@
         "full closed-loop suite 25 passed; integration in-process < 3 s",
         "production --execute wired: src/cmp_ensemble/closed_loop/production.py",
         "tests/test_production.py — 9 passed (incl. full execute loop w/ mocked tNav + real d_obs=(384,))",
-        "closed-loop suite 34 passed"
+        "closed-loop suite 34 passed",
+        "overwrite-slot path: production.TNavOverwriteForward + archive_member (session 027)",
+        "tests/test_overwrite_forward.py — 4 passed; closed-loop suite 44 passed"
       ],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. esmda gained an on_step callback so the orchestrator checkpoints each iter (iter_i/{Theta,D,meta}) for crash recovery. Plan-only path (no --execute) writes run_plan.csv + theta-matrix and STOPS per CLAUDE.md; --execute production path raises NotImplementedError until a live TNavForward is wired on the run machine (needs open_session + real d_obs). Tests inject LinearGaussianForward → full loop runs in-process. | session 027 part 2: --execute now IMPLEMENTED (was NotImplementedError). production.py: model_id=base+i (decision), ResultsResolver globs Models/**/<id>/RESULTS/**/result.SMSPEC (decision), d_obs/C_dd via observations.py on the same cum_index as the reader. Fixed 2 latent bugs in shared io/observations.py exposed by the cumulative-only (rate_index=[]) path: bhp_mask dtype=bool + size-guard on C_dd condition logging (io_smoke still green). open_production_session raises if tnav.exe unset — the only value the user must supply (+ project path)."
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. esmda gained an on_step callback so the orchestrator checkpoints each iter (iter_i/{Theta,D,meta}) for crash recovery. Plan-only path (no --execute) writes run_plan.csv + theta-matrix and STOPS per CLAUDE.md; --execute production path raises NotImplementedError until a live TNavForward is wired on the run machine (needs open_session + real d_obs). Tests inject LinearGaussianForward → full loop runs in-process. | session 027 part 2: --execute now IMPLEMENTED (was NotImplementedError). production.py: model_id=base+i (decision), ResultsResolver globs Models/**/<id>/RESULTS/**/result.SMSPEC (decision), d_obs/C_dd via observations.py on the same cum_index as the reader. Fixed 2 latent bugs in shared io/observations.py exposed by the cumulative-only (rate_index=[]) path: bhp_mask dtype=bool + size-guard on C_dd condition logging (io_smoke still green). open_production_session raises if tnav.exe unset — the only value the user must supply (+ project path). | session 027 part 3: user added the sim step to the WF, but it OVERWRITES a single model slot (Models/51/134) each run. Added serial run->read->archive forward (TNavOverwriteForward): per member, run WF (build+sim, synchronous), read slot SMSPEC, archive theta.json + wf_variables.json + result.SMSPEC/.UNSMRY + model_file_list.txt + d_sim.npy under outputs/closed_loop/iter_i/member_m/ for reproducibility. Selected via tnav.overwrite_slot in config. Batch path kept for fresh-slot projects."
     },
     {
       "id": "CL-F-forecast-metrics",

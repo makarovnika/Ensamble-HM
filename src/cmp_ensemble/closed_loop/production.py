@@ -136,3 +136,120 @@ def open_production_session(config):
 
     conn, project = open_session(exe, project_path)
     return conn, project
+
+
+# ─── Overwrite-slot path (session 027 user setup) ────────────────────────────
+# The WF now builds AND simulates, but overwrites a single model slot every run.
+# So members must run SERIALLY: run -> read the slot -> archive (theta + result)
+# -> next member. Batch-running would leave only the last member's results.
+import json
+import shutil
+from datetime import datetime, timezone
+
+
+def slot_smspec(slot_dir: str | Path) -> Path:
+    """Newest result.SMSPEC under the overwrite model slot's RESULTS tree."""
+    slot_dir = Path(slot_dir)
+    hits = sorted(slot_dir.glob("RESULTS/**/result.SMSPEC"),
+                  key=lambda p: p.stat().st_mtime)
+    if not hits:
+        raise FileNotFoundError(f"no result.SMSPEC under {slot_dir}/RESULTS")
+    return hits[-1]
+
+
+def archive_member(archive_dir: str | Path, member: int, theta: dict,
+                   full_vars: dict, smspec: Path, d_vector, *, iteration: int) -> Path:
+    """Snapshot one member's (theta, WF params, simulation result) for reproducibility."""
+    archive_dir = Path(archive_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    # theta (sampled overrides) + full WF variables
+    (archive_dir / "theta.json").write_text(
+        json.dumps({k: float(v) for k, v in theta.items()}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    (archive_dir / "wf_variables.json").write_text(
+        json.dumps({k: float(v) for k, v in full_vars.items()}, ensure_ascii=False, indent=2),
+        encoding="utf-8")
+    # copy the Eclipse summary (+ siblings needed to re-open it)
+    stem = smspec.stem
+    for suffix in (".SMSPEC", ".UNSMRY", ".sum"):
+        src = smspec.with_suffix(suffix)
+        if src.exists():
+            shutil.copy2(src, archive_dir / f"{stem}{suffix}")
+    # model_file_list.txt (the WF include-file manifest) if present alongside
+    mfl = smspec.parent / "model_file_list.txt"
+    if mfl.exists():
+        shutil.copy2(mfl, archive_dir / "model_file_list.txt")
+    import numpy as np
+
+    np.save(archive_dir / "d_sim.npy", np.asarray(d_vector, dtype=float))
+    (archive_dir / "meta.yaml").write_text(
+        "\n".join([
+            f"member: {member}", f"iteration: {iteration}",
+            f"smspec_source: {smspec.as_posix()}",
+            f"n_d: {len(d_vector)}",
+            f"archived_at_utc: {datetime.now(timezone.utc).isoformat()}",
+        ]) + "\n", encoding="utf-8")
+    return archive_dir
+
+
+class TNavOverwriteForward:
+    """Serial forward for a single overwrite slot: run -> read -> archive per member.
+
+    Each ES-MDA step (one __call__) runs every member through the WF, which
+    overwrites the same model slot and simulates synchronously; we read the slot
+    and archive (theta + WF vars + result.SMSPEC) before the next member runs.
+    """
+
+    def __init__(self, project, workflow, theta_names, slot_dir, cum_index,
+                 *, archive_root=None, archive=True, slot_model_id=134, missing="raise"):
+        self.project = project
+        self.workflow = workflow
+        self.theta_names = list(theta_names)
+        self.slot_dir = Path(slot_dir)
+        self.cum_index = cum_index
+        self.archive_root = Path(archive_root) if archive_root else None
+        self.archive = archive and self.archive_root is not None
+        self.slot_model_id = slot_model_id
+        self.missing = missing
+        self._call = 0
+
+    def _run_one(self, theta: dict) -> None:
+        from tnav_autorun import run_member
+
+        run_member(self.project, self.workflow, self.slot_model_id, theta, save=True)
+
+    def __call__(self, Theta):
+        import numpy as np
+        from tnav_autorun import build_variables
+
+        Theta = np.asarray(Theta, dtype=float)
+        if Theta.shape[1] != len(self.theta_names):
+            raise ValueError(
+                f"Theta has {Theta.shape[1]} cols but {len(self.theta_names)} names")
+        thetas = [dict(zip(self.theta_names, row)) for row in Theta]
+        rows = []
+        for m, theta in enumerate(thetas):
+            log.info("[iter %d] member %d/%d: run -> sim (overwrite slot)",
+                     self._call, m + 1, len(thetas))
+            self._run_one(theta)
+            smspec = slot_smspec(self.slot_dir)
+            d = read_cumulative_dsim(smspec, self.cum_index, missing=self.missing)
+            if self.archive:
+                archive_member(self.archive_root / f"iter_{self._call}" / f"member_{m}",
+                               m, theta, build_variables(theta), smspec, d,
+                               iteration=self._call)
+            rows.append(d)
+        self._call += 1
+        return np.vstack(rows)
+
+
+def build_overwrite_forward(project, workflow, theta_names, snf_root, cum_index,
+                            *, slot_rel="Models/51/134", archive_root=None,
+                            archive=True, missing="raise") -> TNavOverwriteForward:
+    """Assemble the overwrite-slot forward from config-derived paths."""
+    slot_dir = Path(snf_root) / slot_rel
+    slot_model_id = int(Path(slot_rel).name) if Path(slot_rel).name.isdigit() else 134
+    return TNavOverwriteForward(
+        project, workflow, theta_names, slot_dir, cum_index,
+        archive_root=archive_root, archive=archive,
+        slot_model_id=slot_model_id, missing=missing)

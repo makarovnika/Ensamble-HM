@@ -39,7 +39,12 @@ tnav:
   project: "simulation models results/3 centroids with 4 model near by/все центроиды.snp"
   exe: "C:/Program Files/tNavigator/26.1/tNavigator-con-v26.1-4207-g254db398cdfc.exe"
   results_dir: "RESULTS"
-  model_id_base: 1000          # member i -> model_id = base + i (fresh slots)         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
+  model_id_base: 1000          # member i -> model_id = base + i (logical id, for archive)
+  # The WF overwrites a SINGLE model slot each run; results are read from here
+  # and archived per-member for reproducibility (session 027, user setup).
+  model_slot_dir: "Models/51/134"   # relative to <project>.snf
+  overwrite_slot: true              # serial run->read->archive (not batch)
+  archive_members: true             # copy SMSPEC/UNSMRY + theta per member         # RESULTS/<model_name>/result.SMSPEC + .UNSMRY
   # Cluster → workflow map (from tnav_autorun.CLUSTER_CONFIG).
   cluster_workflows:
     0: clust_0_4
