@@ -992,3 +992,13 @@ Newly surfaced by the audit:
 - **Runtime finding (critical for scaling)**: ~9-18 min per member (avg ~13). Serial cost = (n_alpha+1) × N member-sims. For N=150, n_alpha=4: 5×150 = 750 sims × ~13 min ≈ **160 h ≈ 6.7 days serial**. Parallel member execution (multiple licenses/cores; tnav.parallel_members, ТЗ §12 Q5) is required to make a real run practical.
 - Side note: the WF overwrites Models/51/134; the original 134 content is superseded (backup exists at все центроиды.backup_20260622-165000_convert). 134 is the designated scratch slot per user setup.
 - Next: decide real-run N + parallelism strategy. Possible smoke improvement: N>=~10 with localize off (or factor lowered) to see a non-zero misfit drop cheaply before committing to a long run.
+
+### Session 027 — REAL run launched (N=150, n_alpha=4, serial)
+
+- Decisions: serial (1 sim at a time), go straight to the production N=150 / n_alpha=4 on cluster 0.
+- Hardened first: member-level resume (re-launch same --out skips done members; theta is deterministic given seed) + per-member retries. 47 closed-loop tests green.
+- **Launched** `cmp-ensemble closed-loop --cluster 0 --N 150 --n-alpha 4 --execute --out outputs/closed_loop` (background, logs/cl_real.log). Clean start confirmed: prior N=150 n_z=148, d_obs 384, tNavigator session opening.
+- **Scale**: 5 forward passes × 150 = 750 serial sims × ~13 min ≈ **~6.7 days**. iter_0 (150 members) alone ≈ ~32 h.
+- **Resume command if interrupted** (reboot/license drop/session end): re-run the exact same command — archived members are reused.
+- **Watch-point**: after iter_0's ES update, check max|Δθ| / misfit drop to confirm localization (3/√150≈0.245) does NOT zero the whole gain as it did at N=2. If it does, lower localization_factor or switch to soft_taper and resume.
+- **Note**: this run produces the HISTORY-matched posterior (2011-2018). Post-2018 forecast corridors require a separate forecast-window forward (different anchors) wired after the posterior exists.
