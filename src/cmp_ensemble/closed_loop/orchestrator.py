@@ -163,7 +163,9 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
                 project, wf, names, snf_root, cum_index,
                 slot_rel=tnav_cfg.get("model_slot_dir", "Models/51/134"),
                 archive_root=out_root,
-                archive=tnav_cfg.get("archive_members", True))
+                archive=tnav_cfg.get("archive_members", True),
+                resume=config.raw.get("run_policy", {}).get("resume", True),
+                max_retries=config.raw.get("run_policy", {}).get("max_retries", 1))
             log.info("production OVERWRITE forward wired: cluster=%s workflow=%s slot=%s",
                      cluster, wf, tnav_cfg.get("model_slot_dir"))
         else:

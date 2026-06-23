@@ -77,3 +77,71 @@ def test_overwrite_forward_rejects_wrong_width(tmp_path):
         cum_index=[("m", "w", 0)], archive_root=None, archive=False)
     with pytest.raises(ValueError):
         fwd(np.zeros((2, 5)))
+
+
+def test_overwrite_forward_resume_skips_done_members(tmp_path, monkeypatch):
+    """A re-run with the same archive reuses cached d_sim (member-level resume)."""
+    _make_slot(tmp_path)
+    import tnav_autorun
+    n_runs = {"n": 0}
+    monkeypatch.setattr(tnav_autorun, "run_member",
+                        lambda *a, **k: n_runs.__setitem__("n", n_runs["n"] + 1))
+    monkeypatch.setattr(prod, "read_cumulative_dsim",
+                        lambda sm, idx, missing="raise": np.array([7.0, 8.0]))
+    names = ["A", "B"]
+    Theta = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    def _fwd():
+        return prod.build_overwrite_forward(
+            project=None, workflow="w", theta_names=names, snf_root=tmp_path,
+            cum_index=[("m", "w", 0), ("m", "w", 1)],
+            archive_root=tmp_path / "out", archive=True, resume=True)
+
+    D1 = _fwd()(Theta)
+    assert n_runs["n"] == 2                         # both members simulated
+    D2 = _fwd()(Theta)                              # fresh forward, same archive
+    assert n_runs["n"] == 2                         # RESUMED: no new sims
+    np.testing.assert_array_equal(D1, D2)
+
+
+def test_overwrite_forward_resume_reruns_on_theta_change(tmp_path, monkeypatch):
+    """If theta differs from the cached run, resume re-simulates."""
+    _make_slot(tmp_path)
+    import tnav_autorun
+    n_runs = {"n": 0}
+    monkeypatch.setattr(tnav_autorun, "run_member",
+                        lambda *a, **k: n_runs.__setitem__("n", n_runs["n"] + 1))
+    monkeypatch.setattr(prod, "read_cumulative_dsim",
+                        lambda sm, idx, missing="raise": np.array([1.0, 1.0]))
+    names = ["A", "B"]
+    f1 = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=names, snf_root=tmp_path,
+        cum_index=[("m", "w", 0), ("m", "w", 1)],
+        archive_root=tmp_path / "out", archive=True, resume=True)
+    f1(np.array([[1.0, 2.0]]))
+    assert n_runs["n"] == 1
+    f2 = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=names, snf_root=tmp_path,
+        cum_index=[("m", "w", 0), ("m", "w", 1)],
+        archive_root=tmp_path / "out", archive=True, resume=True)
+    f2(np.array([[9.0, 9.0]]))                       # different theta
+    assert n_runs["n"] == 2                          # re-simulated, not resumed
+
+
+def test_overwrite_forward_retries_then_raises(tmp_path, monkeypatch):
+    _make_slot(tmp_path)
+    import tnav_autorun
+    attempts = {"n": 0}
+
+    def _boom(*a, **k):
+        attempts["n"] += 1
+        raise RuntimeError("sim crashed")
+
+    monkeypatch.setattr(tnav_autorun, "run_member", _boom)
+    fwd = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=["A"], snf_root=tmp_path,
+        cum_index=[("m", "w", 0)], archive_root=None, archive=False,
+        resume=False, max_retries=2)
+    with pytest.raises(RuntimeError, match="failed after 3 attempts"):
+        fwd(np.array([[1.0]]))
+    assert attempts["n"] == 3                         # 1 + 2 retries

@@ -56,6 +56,7 @@ run_policy:
   # --execute (session-027: user consented) calls run_ensemble directly.
   execute_default: false
   max_retries: 1
+  resume: true                   # member-level resume: re-launch with same --out skips done members
   parallel_members: false        # license-dependent (§12 Q5); serial by default
 
 checkpoint:

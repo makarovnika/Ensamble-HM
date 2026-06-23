@@ -201,7 +201,8 @@ class TNavOverwriteForward:
     """
 
     def __init__(self, project, workflow, theta_names, slot_dir, cum_index,
-                 *, archive_root=None, archive=True, slot_model_id=134, missing="raise"):
+                 *, archive_root=None, archive=True, slot_model_id=134, missing="raise",
+                 resume=True, max_retries=1):
         self.project = project
         self.workflow = workflow
         self.theta_names = list(theta_names)
@@ -211,12 +212,52 @@ class TNavOverwriteForward:
         self.archive = archive and self.archive_root is not None
         self.slot_model_id = slot_model_id
         self.missing = missing
+        # resume needs the archive to read cached d_sim back; tie them together.
+        self.resume = resume and self.archive
+        self.max_retries = int(max_retries)
         self._call = 0
 
     def _run_one(self, theta: dict) -> None:
         from tnav_autorun import run_member
 
         run_member(self.project, self.workflow, self.slot_model_id, theta, save=True)
+
+    def _cached_dsim(self, adir: Path, theta: dict):
+        """Return the archived d_sim if this member's theta already ran, else None.
+
+        The theta sequence is deterministic given config+seed, so a re-launch
+        reproduces each (iter, member) theta exactly -> a matching cache is valid.
+        """
+        import json
+
+        import numpy as np
+
+        dpath, tpath = adir / "d_sim.npy", adir / "theta.json"
+        if not (dpath.exists() and tpath.exists()):
+            return None
+        cached = json.loads(tpath.read_text(encoding="utf-8"))
+        cur = {k: float(v) for k, v in theta.items()}
+        if set(cached) != set(cur):
+            return None
+        a = np.array([cached[k] for k in sorted(cached)])
+        b = np.array([cur[k] for k in sorted(cur)])
+        if not np.allclose(a, b, rtol=1e-9, atol=1e-12):
+            return None
+        return np.load(dpath)
+
+    def _run_read_member(self, theta: dict):
+        """Run one member with retries; return the d_sim vector."""
+        last = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                self._run_one(theta)
+                smspec = slot_smspec(self.slot_dir)
+                return read_cumulative_dsim(smspec, self.cum_index, missing=self.missing)
+            except Exception as exc:  # noqa: BLE001 -- retry transient sim/read failures
+                last = exc
+                log.warning("member run/read attempt %d/%d failed: %s",
+                            attempt + 1, self.max_retries + 1, exc)
+        raise RuntimeError(f"member failed after {self.max_retries + 1} attempts: {last}")
 
     def __call__(self, Theta):
         import numpy as np
@@ -229,14 +270,21 @@ class TNavOverwriteForward:
         thetas = [dict(zip(self.theta_names, row)) for row in Theta]
         rows = []
         for m, theta in enumerate(thetas):
+            adir = (self.archive_root / f"iter_{self._call}" / f"member_{m}"
+                    if self.archive else None)
+            if self.resume:
+                cached = self._cached_dsim(adir, theta)
+                if cached is not None:
+                    log.info("[iter %d] member %d/%d: RESUMED from archive",
+                             self._call, m + 1, len(thetas))
+                    rows.append(cached)
+                    continue
             log.info("[iter %d] member %d/%d: run -> sim (overwrite slot)",
                      self._call, m + 1, len(thetas))
-            self._run_one(theta)
-            smspec = slot_smspec(self.slot_dir)
-            d = read_cumulative_dsim(smspec, self.cum_index, missing=self.missing)
+            d = self._run_read_member(theta)
             if self.archive:
-                archive_member(self.archive_root / f"iter_{self._call}" / f"member_{m}",
-                               m, theta, build_variables(theta), smspec, d,
+                smspec = slot_smspec(self.slot_dir)
+                archive_member(adir, m, theta, build_variables(theta), smspec, d,
                                iteration=self._call)
             rows.append(d)
         self._call += 1
@@ -245,11 +293,13 @@ class TNavOverwriteForward:
 
 def build_overwrite_forward(project, workflow, theta_names, snf_root, cum_index,
                             *, slot_rel="Models/51/134", archive_root=None,
-                            archive=True, missing="raise") -> TNavOverwriteForward:
+                            archive=True, missing="raise", resume=True,
+                            max_retries=1) -> TNavOverwriteForward:
     """Assemble the overwrite-slot forward from config-derived paths."""
     slot_dir = Path(snf_root) / slot_rel
     slot_model_id = int(Path(slot_rel).name) if Path(slot_rel).name.isdigit() else 134
     return TNavOverwriteForward(
         project, workflow, theta_names, slot_dir, cum_index,
         archive_root=archive_root, archive=archive,
-        slot_model_id=slot_model_id, missing=missing)
+        slot_model_id=slot_model_id, missing=missing,
+        resume=resume, max_retries=max_retries)
