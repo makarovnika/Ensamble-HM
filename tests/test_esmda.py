@@ -71,3 +71,20 @@ def test_esmda_with_localization_runs():
     res = esmda(Theta0, fwd, d_obs, C_dd, n_alpha=4, localize=True, seed=5)
     assert res.localization_applied
     assert res.Theta_post.shape == Theta0.shape
+
+
+def test_esmda_skip_final_eval_saves_a_pass():
+    """skip_final_eval: misfit_history has n_alpha (not n_alpha+1) entries and the
+    forward is called n_alpha times (one per step), not n_alpha+1."""
+    H, Theta0, C_dd, d_obs, _ = _setup(seed=9, N=300)
+    calls = {"n": 0}
+
+    def counting_forward(Theta):
+        calls["n"] += 1
+        return Theta @ H.T
+
+    res = esmda(Theta0, counting_forward, d_obs, C_dd, n_alpha=4, seed=1,
+                skip_final_eval=True)
+    assert calls["n"] == 4                       # 4 steps, no final eval
+    assert len(res.misfit_history) == 4          # pre-update misfits only
+    assert res.Theta_post.shape == Theta0.shape  # posterior still returned

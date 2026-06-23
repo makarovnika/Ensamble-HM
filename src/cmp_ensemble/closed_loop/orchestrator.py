@@ -118,7 +118,8 @@ def checkpoint_iter(out_root, i, Theta, D, misfit, *, config=None):
 
 def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
                     execute=False, out_root=None, cluster=None,
-                    forecast_forward=None, forecast_index=None, d_truth=None):
+                    forecast_forward=None, forecast_index=None, d_truth=None,
+                    skip_final_eval=False):
     """Run (or plan) the closed-loop ES-MDA experiment."""
     out_root = Path(out_root or config.checkpoint_dir)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -186,7 +187,8 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
         n_alpha=config.n_alpha, localize=config.localize,
         localization_factor=config.localization_factor,
         localization_method=config.localization_method,
-        subspace_energy=config.subspace_energy, seed=config.seed, on_step=_on_step)
+        subspace_energy=config.subspace_energy, seed=config.seed, on_step=_on_step,
+        skip_final_eval=skip_final_eval)
 
     post_path = out_root / "Theta_post.npy"
     np.save(post_path, res.Theta_post)

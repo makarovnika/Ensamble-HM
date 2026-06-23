@@ -1176,7 +1176,9 @@ def compare_phase1() -> None:
 @click.option("--dry-run", is_flag=True, help="sample prior + write run plan, then STOP")
 @click.option("--execute", is_flag=True,
               help="auto-run tNavigator each iteration (user-approved auto-launch)")
-def closed_loop_cmd(cluster, n_alpha, n_members, config_path, out_root, dry_run, execute):
+@click.option("--skip-final-eval", is_flag=True,
+              help="skip the final posterior forward pass (saves N simulations)")
+def closed_loop_cmd(cluster, n_alpha, n_members, config_path, out_root, dry_run, execute, skip_final_eval):
     """Closed-loop pure-ensemble ES-MDA (TZ_closed_loop_ESMDA.md).
 
     Without --execute the orchestrator writes iter_0/run_plan.csv + the theta
@@ -1204,7 +1206,8 @@ def closed_loop_cmd(cluster, n_alpha, n_members, config_path, out_root, dry_run,
                  res.status, res.out_dir)
         return
     # --execute: production path requires a live tNavigator + d_obs wiring.
-    run_closed_loop(cfg, execute=True, out_root=out_root, cluster=cluster)
+    run_closed_loop(cfg, execute=True, out_root=out_root, cluster=cluster,
+                    skip_final_eval=skip_final_eval)
 
 
 @cli.command(name="closed-loop-report")

@@ -75,6 +75,7 @@ def esmda(
     seed: int = 42,
     keep_history: bool = True,
     on_step=None,
+    skip_final_eval: bool = False,
 ) -> ESMDAResult:
     """Run ES-MDA.
 
@@ -132,12 +133,20 @@ def esmda(
         log.info("ES-MDA step %d/%d alpha=%.3f misfit=%.4g",
                  i + 1, len(alphas), a, misfit_history[-1])
 
-    # Final misfit after the last update.
-    D_final = forward(Theta)
-    misfit_history.append(data_misfit(D_final, d_obs, C_dd))
-    if keep_history:
-        D_hist.append(D_final.copy())
-    log.info("ES-MDA done: misfit %.4g -> %.4g", misfit_history[0], misfit_history[-1])
+    # Final misfit after the last update — one extra full forward pass over the
+    # posterior. skip_final_eval drops it to save N simulations: the posterior
+    # Theta is still returned; only the exact posterior misfit is forgone (it can
+    # be recovered later, e.g. from the forecast-window run over the posterior).
+    if not skip_final_eval:
+        D_final = forward(Theta)
+        misfit_history.append(data_misfit(D_final, d_obs, C_dd))
+        if keep_history:
+            D_hist.append(D_final.copy())
+        log.info("ES-MDA done: misfit %.4g -> %.4g",
+                 misfit_history[0], misfit_history[-1])
+    else:
+        log.info("ES-MDA done (final eval skipped): misfit history = %d pre-update "
+                 "steps; posterior misfit not computed", len(misfit_history))
 
     return ESMDAResult(
         Theta_post=Theta,

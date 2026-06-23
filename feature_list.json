@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — member-level resume + retries for the long serial run)",
+  "last_updated": "2026-06-22 (session 027 — --skip-final-eval to cut N sims from the run)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
