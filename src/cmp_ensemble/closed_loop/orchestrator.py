@@ -117,7 +117,8 @@ def checkpoint_iter(out_root, i, Theta, D, misfit, *, config=None):
 
 
 def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
-                    execute=False, out_root=None, cluster=None):
+                    execute=False, out_root=None, cluster=None,
+                    forecast_forward=None, forecast_index=None, d_truth=None):
     """Run (or plan) the closed-loop ES-MDA experiment."""
     out_root = Path(out_root or config.checkpoint_dir)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -185,6 +186,31 @@ def run_closed_loop(config, *, forward=None, d_obs=None, C_dd=None, prior=None,
                          "localization_applied": bool(res.localization_applied)})
     log.info("closed loop done: misfit %.4g -> %.4g, posterior %s",
              res.misfit_history[0], res.misfit_history[-1], post_path)
+
+    # CL-F: diagnostic figures (always) + forecast corridors (if a forecast
+    # forward is supplied). Failures here must not lose the posterior, so guard.
+    try:
+        from cmp_ensemble.closed_loop import figures as figs
+
+        figdir = out_root / "figures"
+        figs.fig_misfit_evolution(res.misfit_history, figdir / "misfit_evolution.png")
+        figs.fig_theta_migration(Theta0, res.Theta_post, names,
+                                 figdir / "theta_migration.png")
+        if forecast_forward is not None and forecast_index is not None:
+            from cmp_ensemble.closed_loop import forecast as fc_mod
+
+            d_prior_fc = fc_mod.run_forecast(Theta0, forecast_forward)
+            d_post_fc = fc_mod.run_forecast(res.Theta_post, forecast_forward)
+            fc = fc_mod.summarize_forecast(d_prior_fc, d_post_fc, forecast_index,
+                                           d_truth=d_truth)
+            fc_mod.write_forecast_artifacts(fc, out_root)
+            figs.fig_forecast_corridors(fc.prior_quantiles, fc.post_quantiles,
+                                        figdir / "forecast_corridors.png")
+            log.info("forecast written: width_ratio over %d rows",
+                     len(fc.metrics.width_ratio_table))
+    except Exception as exc:  # noqa: BLE001 -- figures/forecast are non-critical
+        log.warning("CL-F figures/forecast step failed (posterior is safe): %s", exc)
+
     return ClosedLoopResult(status="completed", out_dir=out_root,
                             theta_names=list(names), Theta_post=res.Theta_post,
                             misfit_history=res.misfit_history, n_iter=config.n_alpha)

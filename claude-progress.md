@@ -947,3 +947,15 @@ Newly surfaced by the audit:
 - **The closed-loop Python machinery (CL-A..CL-E) is complete and correct.** The only missing piece for a live run is the tNavigator-side step that RUNS the simulation after the geology workflow — this is project-specific and needs the user's input (how were the original 150 dynamic runs triggered: a second workflow? a "calculate dynamic model" API call? a model-template that auto-simulates?).
 - Side fixes landed this session: UTF-8 console logging; ASCII tnav_autorun messages. Probe script + temp logs removed (kept tree clean).
 - Next best step: get the simulation-run mechanism from the user, add it to `production.run_fn` (build geology → run dynamic model → then read), and re-smoke. Until then, CL-F/CL-G can proceed structurally on synthetic data.
+
+### Session 027 — CL-F (forecast + metrics + figures)
+
+- User chose to proceed with CL-F structurally while the tNavigator sim-run mechanism is resolved.
+- **CL-F → passing**: `src/cmp_ensemble/closed_loop/{forecast.py, figures.py}`.
+  - `forecast.py`: `run_forecast` (Θ → forecast d via the forward), `summarize_forecast` (prior vs posterior field-total corridors + metrics, reusing `forecast.aggregation.field_total_quantiles` + `forecast.metrics.compute_metrics`), `write_forecast_artifacts` (corridors + width_ratio + median_shift CSVs + d_*_fc.npy), `compare_to_posthoc` (side-by-side vs the post-hoc metrics_summary.csv).
+  - `figures.py`: `fig_misfit_evolution` (misfit per ES-MDA step + % reduction), `fig_theta_migration` (posterior shift in prior-σ per parameter), `fig_forecast_corridors` (prior grey vs posterior blue P10/P50/P90 bands). Each writes 300-dpi PNG + vector PDF.
+  - Orchestrator: after the posterior, always renders misfit + θ-migration; if `forecast_forward` + `forecast_index` supplied, runs forecast + corridors + artifacts. The whole CL-F block is guarded (try/except) so a figure/forecast failure never loses the posterior.
+- Acceptance metrics = width_ratio + median_shift (no forecast d_truth for this dataset, same stance as the post-hoc experiment); coverage/CRPS available if a forecast truth ever appears.
+- Verification: `pytest tests/test_closed_loop_forecast.py` → 4 passed; closed-loop suite → **38 passed**; full suite → 344 passed (only the 4 pre-existing post-hoc-drift failures).
+- Remaining: CL-G (HTML rollup + methodology docs) — cheap; and the live --execute still blocked on the tNavigator sim-run step (clust_0_4 builds geology only). The closed-loop forecast/figures will light up with real numbers the moment a real posterior + forecast summaries exist.
+- Next best step: CL-G (report/docs), then revisit live --execute once the user confirms how the dynamic simulation is triggered.

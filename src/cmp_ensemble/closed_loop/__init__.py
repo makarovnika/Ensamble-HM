@@ -17,6 +17,11 @@ from cmp_ensemble.closed_loop.orchestrator import (
     ClosedLoopResult,
     run_closed_loop,
 )
+from cmp_ensemble.closed_loop.forecast import (
+    ClosedLoopForecast,
+    run_forecast,
+    summarize_forecast,
+)
 from cmp_ensemble.closed_loop.results_reader import (
     assemble_dsim,
     read_cumulative_dsim,
@@ -24,6 +29,7 @@ from cmp_ensemble.closed_loop.results_reader import (
 
 __all__ = [
     "ClosedLoopConfig",
+    "ClosedLoopForecast",
     "ClosedLoopResult",
     "ESMDAResult",
     "ForwardModel",
@@ -34,6 +40,8 @@ __all__ = [
     "esmda",
     "read_cumulative_dsim",
     "run_closed_loop",
+    "run_forecast",
+    "summarize_forecast",
     "sample_prior",
     "uniform_alphas",
 ]

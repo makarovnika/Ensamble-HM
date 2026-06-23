@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — live tNav smoke: connection OK, result-mapping unresolved; logging UTF-8 fix)",
+  "last_updated": "2026-06-22 (session 027 — CL-F passing; forecast + metrics + figures, structural on synthetic)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1266,14 +1266,20 @@
       "area": "closed_loop",
       "title": "CL-F: прогноз post-2018 + метрики + фигуры + сравнение с пост-хок",
       "user_visible_behavior": "Квантили P10/P50/P90, width_ratio, median_shift; совмещённые коридоры pure-ensemble vs post-hoc.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "прогноз для Θ_post на 2019-2024",
         "метрики и эволюция misfit по шагам",
         "сравнение коридоров и таблица метрик"
       ],
-      "evidence": [],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+      "evidence": [
+        "tests/test_closed_loop_forecast.py — 4 passed (session 027)",
+        "src/cmp_ensemble/closed_loop/{forecast.py,figures.py}",
+        "reuses forecast.aggregation.field_total_quantiles + forecast.metrics.compute_metrics",
+        "orchestrator renders misfit_evolution + theta_migration always; forecast_corridors + corridors CSVs when forecast_forward supplied",
+        "closed-loop suite 38 passed; full suite 344 passed (4 pre-existing failures only)"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027 (structural, on synthetic — real posterior pending the tNavigator sim-run fix). forecast.py: run_forecast/summarize_forecast/write_forecast_artifacts/compare_to_posthoc. figures.py: fig_misfit_evolution, fig_theta_migration (shift in prior-sigma), fig_forecast_corridors (prior vs posterior P10/P50/P90). width_ratio + median_shift are the acceptance metrics (no forecast d_truth, same as post-hoc). CL-F figure/forecast step is guarded in the orchestrator so a render failure never loses the posterior."
     },
     {
       "id": "CL-G-report-docs",
