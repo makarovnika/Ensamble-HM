@@ -1207,6 +1207,17 @@ def closed_loop_cmd(cluster, n_alpha, n_members, config_path, out_root, dry_run,
     run_closed_loop(cfg, execute=True, out_root=out_root, cluster=cluster)
 
 
+@cli.command(name="closed-loop-report")
+@click.option("--out", "out_root", default="outputs/closed_loop", show_default=True,
+              help="closed-loop run root to summarise")
+def closed_loop_report_cmd(out_root):
+    """Render the closed-loop HTML rollup from a completed run's artifacts."""
+    from cmp_ensemble.closed_loop.report import build_closed_loop_report
+
+    path = build_closed_loop_report(out_root)
+    log.info("closed-loop report: %s", path)
+
+
 def main() -> None:
     cli()
 

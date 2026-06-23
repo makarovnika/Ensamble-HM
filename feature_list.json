@@ -1,6 +1,6 @@
 {
   "project": "cmp-ensemble-hm",
-  "last_updated": "2026-06-22 (session 027 — CL-F passing; forecast + metrics + figures, structural on synthetic)",
+  "last_updated": "2026-06-22 (session 027 — CL-G passing; ALL CL-A..CL-G complete. Live --execute pending tNavigator sim-run step)",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -1287,14 +1287,20 @@
       "area": "closed_loop",
       "title": "CL-G: HTML-роллап + раздел методологии closed-loop",
       "user_visible_behavior": "outputs/closed_loop/report.html + docs обновление для ES-MDA эксперимента.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "HTML-роллап closed-loop",
         "docs/methodology.md дополнен ES-MDA",
         "evidence-пути зафиксированы"
       ],
-      "evidence": [],
-      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute."
+      "evidence": [
+        "tests/test_closed_loop_report.py — 2 passed (session 027)",
+        "src/cmp_ensemble/closed_loop/report.py (self-contained HTML, no jinja2)",
+        "docs/closed_loop_methodology.md",
+        "cmp-ensemble closed-loop-report CLI",
+        "end-to-end demo: misfit 53.2->2.2, report.html + 3 figures + metrics rendered"
+      ],
+      "notes": "Зарегистрирована в session 027 (новый эксперимент TZ_closed_loop_ESMDA.md). Решения session 027: full relperm set, n_α=4, N=150, авто-режим --execute. | Closed session 027. build_closed_loop_report: inline-CSS HTML (portable, relative asset links, no absolute-path leak), embeds misfit reduction + 3 figures + forecast metrics table + reproducibility sidecar; graceful when artifacts missing. docs/closed_loop_methodology.md documents method, theta (n_z=148), observations, forecast/metrics, run policy, and the known clust_0_4 sim-run gap."
     }
   ]
 }

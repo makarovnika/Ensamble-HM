@@ -22,6 +22,7 @@ from cmp_ensemble.closed_loop.forecast import (
     run_forecast,
     summarize_forecast,
 )
+from cmp_ensemble.closed_loop.report import build_closed_loop_report
 from cmp_ensemble.closed_loop.results_reader import (
     assemble_dsim,
     read_cumulative_dsim,
@@ -37,6 +38,7 @@ __all__ = [
     "TNavForward",
     "PriorResult",
     "assemble_dsim",
+    "build_closed_loop_report",
     "esmda",
     "read_cumulative_dsim",
     "run_closed_loop",
