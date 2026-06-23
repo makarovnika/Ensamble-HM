@@ -980,3 +980,15 @@ Newly surfaced by the audit:
 - Verification: `tests/test_overwrite_forward.py` → 4 passed (slot read, archive snapshot, serial run/read/archive with per-iter dirs, width guard); closed-loop suite → **44 passed**.
 - **Ready for a live re-smoke** now that the WF simulates. Expected: each member writes Models/51/134, we read + archive, ES-MDA proceeds. The only runtime cost is real (flow sim per member, synchronous).
 - Next: run a small live smoke (`--cluster 0 --N 2 --n-alpha 1 --execute`) to confirm the full real loop, then scale up.
+
+### Session 027 — LIVE closed-loop validated end-to-end (N=2 smoke)
+
+- **Full real ES-MDA loop ran on live tNavigator** (exit 0): iter0 2 members (13:25-13:49), ES step, iter1 2 members (13:49-14:17). 4 real geology+flow simulations.
+- **Plumbing fully validated**: each member archived `result.SMSPEC`/`.UNSMRY`/`.sum` + `theta.json` + `wf_variables.json` + `model_file_list.txt` + `d_sim.npy` under `outputs/cl_smoke2/iter_i/member_m/`. `d_sim` real: (384,), 263/384 nonzero, members genuinely differ (maxdiff 9.8e6). Checkpoints + posterior + misfit/theta-migration figures all produced.
+- **misfit 129.6 -> 129.6 (0% reduction), theta unchanged (max|Δθ|=0)** — a degenerate-N=2 artifact, NOT a bug:
+  1. centered-Theta rank = 1 (2 members span 1 direction);
+  2. adaptive localization threshold = 3/√2 = 2.12, but the sample correlation between any two paired points is always ±1, so |corr|=1 < 2.12 zeros the ENTIRE Kalman gain -> theta_post = theta_prior. Because theta didn't move, iter1 re-ran byte-identical simulations.
+  At realistic N (100-150) the threshold 3/√N ≈ 0.24-0.30 < typical sensitivities, so the update is meaningful.
+- **Runtime finding (critical for scaling)**: ~9-18 min per member (avg ~13). Serial cost = (n_alpha+1) × N member-sims. For N=150, n_alpha=4: 5×150 = 750 sims × ~13 min ≈ **160 h ≈ 6.7 days serial**. Parallel member execution (multiple licenses/cores; tnav.parallel_members, ТЗ §12 Q5) is required to make a real run practical.
+- Side note: the WF overwrites Models/51/134; the original 134 content is superseded (backup exists at все центроиды.backup_20260622-165000_convert). 134 is the designated scratch slot per user setup.
+- Next: decide real-run N + parallelism strategy. Possible smoke improvement: N>=~10 with localize off (or factor lowered) to see a non-zero misfit drop cheaply before committing to a long run.
