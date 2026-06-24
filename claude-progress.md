@@ -1012,3 +1012,11 @@ Newly surfaced by the audit:
 - **Durability**: because the harness background task died once, the robust operating model is RESUME. Re-launch command (idempotent, continues from archived members):
   `python -m cmp_ensemble.cli --log-level INFO closed-loop --cluster 0 --N 75 --n-alpha 4 --skip-final-eval --execute --out outputs/closed_loop`
   Best run in a persistent user terminal (Start-Process / kept-open PowerShell) so it survives independent of the agent session. config N default now 75.
+
+### Session 028 — overnight reboot + WF-invalid-relperm root cause + repair fix
+
+- Computer rebooted overnight; the N=75 run had actually CRASHED ~16:16 (not hung) on member 0, then sat dead. (The 16:49 hourly monitor was missed.)
+- Root cause (diagnosed): `cl_err.log` showed `Error while executing workflow "clust_0_4" for project model_134`. Live diagnostic with a KNOWN-GOOD theta (yesterday's cl_smoke2 member_0) → **SUCCESS in 11 min** → project state is FINE; the failure is theta-specific. The N=75 member-0 theta has no single bad parameter (all within ~2.8σ, none at a bound) — tNavigator rejects an invalid full-relperm *combination* (ОФП table). This is the materialised risk of the full relperm set (ТЗ §12 Q2).
+- Fix: **member repair-toward-base**. On WF rejection, `TNavOverwriteForward` pulls the member's relperm/contact params toward `BASE_VARIABLES` (factor 0.5→0.25→0.125→0; geology untouched) and retries. factor=0 = exact base relperm = guaranteed valid (base is the real adapted model). The repaired theta is written back into the ensemble (so the ES update stays consistent with its d) and archived. WF rejections are FAST (validation, seconds), so repair is cheap. 11 overwrite tests, 37 closed-loop tests pass.
+- Caveat to watch: if many members get repaired, relperm diversity shrinks toward base (geology — the primary HM lever — is preserved). A high repair rate is itself a finding (prior too loose); the report will surface how many members were repaired.
+- Next: relaunch N=75 with the repair fix; hourly monitor + auto-resume continue.

@@ -142,6 +142,84 @@ def test_overwrite_forward_retries_then_raises(tmp_path, monkeypatch):
         project=None, workflow="w", theta_names=["A"], snf_root=tmp_path,
         cum_index=[("m", "w", 0)], archive_root=None, archive=False,
         resume=False, max_retries=2)
+    # the retry layer itself: max_retries+1 attempts then RuntimeError
     with pytest.raises(RuntimeError, match="failed after 3 attempts"):
-        fwd(np.array([[1.0]]))
+        fwd._run_read_member({"A": 1.0})
     assert attempts["n"] == 3                         # 1 + 2 retries
+
+
+def test_call_repair_exhausts_to_base_then_raises(tmp_path, monkeypatch):
+    """When even base relperm can't run (A has no base -> repair is a no-op),
+    the forward raises the base-relperm error, not a silent bad result."""
+    _make_slot(tmp_path)
+    import tnav_autorun
+    monkeypatch.setattr(tnav_autorun, "run_member",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    fwd = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=["A"], snf_root=tmp_path,
+        cum_index=[("m", "w", 0)], archive_root=None, archive=False,
+        resume=False, max_retries=0)
+    with pytest.raises(RuntimeError, match="even at base relperm"):
+        fwd(np.array([[1.0]]))
+
+
+def test_repair_theta_pulls_relperm_to_base_keeps_geology():
+    from tnav_autorun import BASE_VARIABLES as BASE
+    fwd = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=["THICK", "S_WL_1"],
+        snf_root=".", cum_index=[("m", "w", 0)], archive=False)
+    theta = {"THICK": 99.0, "S_WL_1": 0.99}      # THICK=geology(no base), S_WL_1 in BASE
+    r0 = fwd._repair_theta(theta, 0.0)
+    assert r0["S_WL_1"] == BASE["S_WL_1"]        # factor 0 -> exact base
+    assert r0["THICK"] == 99.0                   # geology untouched
+    rh = fwd._repair_theta(theta, 0.5)
+    assert abs(rh["S_WL_1"] - (BASE["S_WL_1"] + 0.5 * (0.99 - BASE["S_WL_1"]))) < 1e-9
+
+
+def test_run_member_with_repair_recovers_invalid_member(monkeypatch):
+    fwd = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=["THICK", "S_WL_1"],
+        snf_root=".", cum_index=[("m", "w", 0)], archive=False)
+    orig = {"THICK": 10.0, "S_WL_1": 0.99}
+    calls = {"n": 0}
+
+    def fake_run_read(theta):
+        calls["n"] += 1
+        # original (S_WL_1=0.99) is "invalid"; any pulled-toward-base value is OK
+        if abs(theta["S_WL_1"] - 0.99) < 1e-9:
+            raise RuntimeError("WF rejected relperm")
+        return np.array([42.0])
+
+    monkeypatch.setattr(fwd, "_run_read_member", fake_run_read)
+    d, used = fwd._run_member_with_repair(orig)
+    np.testing.assert_array_equal(d, [42.0])
+    assert used is not orig                       # repaired theta returned
+    assert abs(used["S_WL_1"] - 0.99) > 1e-6      # moved toward base
+    assert calls["n"] >= 2                        # failed once, then repaired
+
+
+def test_call_mutates_theta_row_on_repair(tmp_path, monkeypatch):
+    _make_slot(tmp_path)
+    import tnav_autorun
+    monkeypatch.setattr(tnav_autorun, "run_member", lambda *a, **k: None)
+    # read fails for S_WL_1=0.99 (invalid), succeeds otherwise
+    def fake_read(sm, idx, missing="raise"):
+        return np.array([1.0, 2.0])
+    monkeypatch.setattr(prod, "read_cumulative_dsim", fake_read)
+    fwd = prod.build_overwrite_forward(
+        project=None, workflow="w", theta_names=["THICK", "S_WL_1"],
+        snf_root=tmp_path, cum_index=[("m", "w", 0), ("m", "w", 1)],
+        archive_root=tmp_path / "out", archive=True, resume=False)
+    # make the FIRST attempt (original theta) fail, repair succeeds
+    real = fwd._run_read_member
+    state = {"failed": False}
+    def flaky(theta):
+        from tnav_autorun import BASE_VARIABLES as BASE
+        if not state["failed"] and abs(theta["S_WL_1"] - 0.99) < 1e-9:
+            state["failed"] = True
+            raise RuntimeError("reject")
+        return np.array([1.0, 2.0])
+    monkeypatch.setattr(fwd, "_run_read_member", flaky)
+    Theta = np.array([[10.0, 0.99]])
+    fwd(Theta)
+    assert abs(Theta[0, 1] - 0.99) > 1e-6         # row mutated to repaired value

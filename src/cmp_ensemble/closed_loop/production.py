@@ -281,14 +281,49 @@ class TNavOverwriteForward:
                     continue
             log.info("[iter %d] member %d/%d: run -> sim (overwrite slot)",
                      self._call, m + 1, len(thetas))
-            d = self._run_read_member(theta)
+            d, used_theta = self._run_member_with_repair(theta)
+            if used_theta is not theta:
+                # a relperm combination was rejected by the WF; the member was
+                # pulled toward base. Write the repaired theta back into the
+                # ensemble so the ES update stays consistent with its d.
+                Theta[m] = np.array([used_theta[k] for k in self.theta_names])
             if self.archive:
                 smspec = slot_smspec(self.slot_dir)
-                archive_member(adir, m, theta, build_variables(theta), smspec, d,
-                               iteration=self._call)
+                archive_member(adir, m, used_theta, build_variables(used_theta),
+                               smspec, d, iteration=self._call)
             rows.append(d)
         self._call += 1
         return np.vstack(rows)
+
+    def _repair_theta(self, theta: dict, factor: float) -> dict:
+        """Pull relperm/contact params toward the known-valid base by ``factor``
+        (geology kept as-is). factor=0 => exact base relperm (guaranteed valid)."""
+        from tnav_autorun import BASE_VARIABLES as BASE
+
+        out = dict(theta)
+        for k, v in theta.items():
+            b = BASE.get(k)
+            if b is not None:                       # relperm/contact param
+                out[k] = float(b) + factor * (float(v) - float(b))
+        return out
+
+    def _run_member_with_repair(self, theta: dict):
+        """Run a member; if the WF rejects its relperm, shrink toward base and
+        retry. Returns (d_sim, theta_used). factor=0 (pure base) is the backstop."""
+        try:
+            return self._run_read_member(theta), theta
+        except RuntimeError as exc:
+            log.warning("member rejected by WF (%s); repairing toward base", exc)
+        for factor in (0.5, 0.25, 0.125, 0.0):
+            repaired = self._repair_theta(theta, factor)
+            try:
+                d = self._run_read_member(repaired)
+                log.info("member repaired with factor=%.3f", factor)
+                return d, repaired
+            except RuntimeError:
+                continue
+        raise RuntimeError("member failed even at base relperm (factor=0) — "
+                           "project/geology issue, not a relperm combination")
 
 
 def build_overwrite_forward(project, workflow, theta_names, snf_root, cum_index,
