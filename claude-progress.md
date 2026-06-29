@@ -1020,3 +1020,14 @@ Newly surfaced by the audit:
 - Fix: **member repair-toward-base**. On WF rejection, `TNavOverwriteForward` pulls the member's relperm/contact params toward `BASE_VARIABLES` (factor 0.5→0.25→0.125→0; geology untouched) and retries. factor=0 = exact base relperm = guaranteed valid (base is the real adapted model). The repaired theta is written back into the ensemble (so the ES update stays consistent with its d) and archived. WF rejections are FAST (validation, seconds), so repair is cheap. 11 overwrite tests, 37 closed-loop tests pass.
 - Caveat to watch: if many members get repaired, relperm diversity shrinks toward base (geology — the primary HM lever — is preserved). A high repair rate is itself a finding (prior too loose); the report will surface how many members were repaired.
 - Next: relaunch N=75 with the repair fix; hourly monitor + auto-resume continue.
+
+### Session 028 — RUN COMPLETE (N=75, n_alpha=4, --skip-final-eval)
+
+- The closed-loop ES-MDA run finished: **300/300 members** (4 iters × 75), last member 04:09. Survived an overnight reboot via member-level resume.
+- **Misfit (mean normalised data misfit, pre-update per step): 1.278e7 → 3209 → 263.2 → 263.9 — a ×48430 reduction.** The prior was far off (huge 1.28e7); the first ES-MDA update collapsed it to ~3200, then refined to ~264 (converged by iter 2-3). 264 is still > ideal ~1 (localization limits the fit), but the improvement is dramatic.
+- **θ moved: yes.** Spread retention (mean σ_post/σ_prior) = 0.623 — healthy, no collapse. Max mean shift 147.7 (WOC depth, metres).
+- **Geology: only AZIMUTH moved (−0.60σ); the other 8 geology params did NOT move (frozen by hard 3/√75≈0.346 localization)** — same aggressive-localization signature as the post-hoc experiment. Top movers: WOC_DEPTH_S_1 (+0.90σ, water-oil contact), S_WL_3A, AZIMUTH, S_WCR_8, KH_3A. So the misfit collapse was driven by a few high-impact params (contact depth + azimuth + select relperm), not broad updates.
+- **Repair rate: 101/300 (~34%)** members had a WF-rejected relperm combo and were pulled toward base; **0 hard failures**. The full-relperm prior (rel_sigma=0.15) is too loose — a documented finding (supports ТЗ §12 Q2 reduced-set recommendation).
+- Artifacts: `outputs/closed_loop/` — 300 archived members (θ + result.SMSPEC + d_sim), iter_0..3 checkpoints, Theta_post.npy, misfit_history.npy, report.html, figures/{misfit_evolution,theta_migration}.png. Sanity-checked mid-run: d_sim monotonic/positive, ensemble diverse (CV 0.62), magnitudes in line with d_obs (oil 0.93, water 1.40, gas 0.45 — the mismatch the HM then reduced).
+- **Loop STOPPED** (run complete; no further hourly wakeups).
+- Follow-ups: (1) post-2018 forecast over the posterior (separate forecast-window forward) for CL-F corridors; (2) localization is too aggressive at 3/√N — consider soft_taper / lower factor for a richer geology update; (3) tighter/reduced relperm prior to cut the 34% repair rate.

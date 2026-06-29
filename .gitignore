@@ -36,3 +36,8 @@ Thumbs.db
 # Pipeline caches
 *.npy.cache
 *.h5.cache
+
+# Large run artefacts & tNavigator project (never commit — GBs / machine-specific)
+/outputs/
+/simulation models results/
+*.bak
